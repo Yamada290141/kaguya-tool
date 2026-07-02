@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>かぐや様 勝利ナビ</title>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --card: #13131a;
+    --card2: #1a1a24;
+    --border: #2a2a3a;
+    --accent: #e74c6e;
+    --accent2: #6e74e7;
+    --green: #2ecc71;
+    --yellow: #f39c12;
+    --red: #e74c3c;
+    --text: #e8e8f0;
+    --muted: #7070a0;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, 'Helvetica Neue', sans-serif; min-height: 100vh; }
+
+  header { background: linear-gradient(135deg, #1a0a20, #0a0a1a); padding: 16px 20px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--border); }
+  header h1 { font-size: 18px; font-weight: 700; background: linear-gradient(90deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  header .sub { font-size: 11px; color: var(--muted); }
+
+  .tabs { display: flex; background: var(--card); border-bottom: 1px solid var(--border); overflow-x: auto; }
+  .tab { padding: 12px 16px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; color: var(--muted); border-bottom: 2px solid transparent; transition: all .2s; }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .page { display: none; padding: 16px; max-width: 600px; margin: 0 auto; }
+  .page.active { display: block; }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; }
+  .card-title { font-size: 13px; font-weight: 700; color: var(--accent); margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+
+  label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px; margin-top: 10px; }
+  label:first-child { margin-top: 0; }
+  input[type=number], select { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 10px 12px; font-size: 14px; outline: none; }
+  input[type=number]:focus, select:focus { border-color: var(--accent); }
+
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+
+  .btn { display: block; width: 100%; padding: 14px; background: linear-gradient(135deg, var(--accent), #c0365a); color: white; border: none; border-radius: var(--radius); font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 14px; }
+  .btn:active { opacity: .85; }
+
+  .result-box { border-radius: var(--radius); padding: 16px; margin-top: 12px; display: none; }
+  .result-box.show { display: block; }
+  .result-box.green { background: rgba(46,204,113,.12); border: 1px solid rgba(46,204,113,.4); }
+  .result-box.yellow { background: rgba(243,156,18,.12); border: 1px solid rgba(243,156,18,.4); }
+  .result-box.red { background: rgba(231,76,60,.12); border: 1px solid rgba(231,76,60,.4); }
+
+  .verdict { font-size: 22px; font-weight: 800; margin-bottom: 8px; }
+  .verdict.go { color: var(--green); }
+  .verdict.caution { color: var(--yellow); }
+  .verdict.stop { color: var(--red); }
+
+  .reason-list { list-style: none; }
+  .reason-list li { font-size: 13px; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,.06); display: flex; gap: 8px; }
+  .reason-list li:last-child { border-bottom: none; }
+  .tag { font-size: 10px; padding: 2px 7px; border-radius: 10px; font-weight: 700; white-space: nowrap; align-self: center; }
+  .tag.pos { background: rgba(46,204,113,.2); color: var(--green); }
+  .tag.neg { background: rgba(231,76,60,.2); color: var(--red); }
+  .tag.neu { background: rgba(110,116,231,.2); color: var(--accent2); }
+
+  .score-bar-wrap { margin-top: 12px; }
+  .score-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .score-bar { height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+  .score-fill { height: 100%; border-radius: 4px; transition: width .5s; }
+
+  .info-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .info-row:last-child { border-bottom: none; }
+  .info-val { font-weight: 700; color: var(--accent2); }
+  .info-val.pos { color: var(--green); }
+  .info-val.neg { color: var(--red); }
+
+  .section-title { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin: 16px 0 8px; }
+
+  /* チェックリスト */
+  .check-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
+  .check-item:last-child { border-bottom: none; }
+  .check-item input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); flex-shrink: 0; margin-top: 2px; }
+  .check-item .check-label { font-size: 13px; line-height: 1.5; }
+  .check-item .check-note { font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+  .badge.s6 { background: rgba(231,76,60,.2); color: #e74c3c; }
+  .badge.s4 { background: rgba(243,156,18,.2); color: #f39c12; }
+  .badge.s2 { background: rgba(110,116,231,.2); color: var(--accent2); }
+  .badge.s1 { background: rgba(100,100,120,.2); color: var(--muted); }
+  .badge.yuuguu { background: rgba(46,204,113,.2); color: var(--green); }
+  .badge.reiguu { background: rgba(231,76,60,.2); color: #e74c3c; }
+
+  /* 履歴入力 */
+  .history-list { display: flex; flex-direction: column; gap: 8px; }
+  .history-item { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px; display: flex; gap: 8px; align-items: center; }
+  .history-item select, .history-item input { flex: 1; min-width: 0; padding: 6px 8px; font-size: 13px; }
+  .del-btn { background: rgba(231,76,60,.2); border: none; color: #e74c3c; border-radius: 6px; padding: 6px 10px; cursor: pointer; font-size: 14px; flex-shrink: 0; }
+  .add-btn { background: var(--card2); border: 1px dashed var(--border); color: var(--muted); border-radius: 8px; padding: 10px; width: 100%; cursor: pointer; font-size: 13px; margin-top: 6px; }
+
+  .meter { display: flex; gap: 4px; margin-top: 8px; }
+  .meter-seg { flex: 1; height: 6px; border-radius: 3px; background: var(--border); }
+  .meter-seg.on { background: var(--accent); }
+  .meter-seg.on.g { background: var(--green); }
+  .meter-seg.on.y { background: var(--yellow); }
+
+  .notice { font-size: 11px; color: var(--muted); text-align: center; padding: 20px 16px; line-height: 1.7; }
+
+  /* CZスルー 不明モード */
+  .cz-mode-toggle { display: flex; gap: 6px; margin-bottom: 10px; }
+  .cz-mode-btn { flex: 1; padding: 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--muted); font-size: 12px; font-weight: 600; cursor: pointer; transition: all .2s; text-align: center; }
+  .cz-mode-btn.active { background: rgba(231,76,60,.15); border-color: var(--accent); color: var(--accent); }
+  .cz-unknown-box { background: rgba(110,116,231,.08); border: 1px solid rgba(110,116,231,.3); border-radius: 10px; padding: 12px; margin-top: 6px; }
+  .cz-unknown-box .tip { font-size: 12px; color: var(--accent2); font-weight: 600; margin-bottom: 6px; }
+  .cz-unknown-box .tip-body { font-size: 11px; color: var(--muted); line-height: 1.7; }
+  .cz-est-result { margin-top: 10px; font-size: 13px; }
+  .cz-est-result strong { color: var(--yellow); font-size: 16px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>かぐや様 勝利ナビ</h1>
+    <div class="sub">ごん氏資料 / バイブル 統合判定ツール</div>
+  </div>
+</header>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab(0)">台選び判定</div>
+  <div class="tab" onclick="switchTab(1)">やめ時判定</div>
+  <div class="tab" onclick="switchTab(2)">有利区間計算</div>
+  <div class="tab" onclick="switchTab(3)">設定チェック</div>
+  <div class="tab" onclick="switchTab(4)">狙い目ガイド</div>
+</div>
+
+<!-- ========== TAB 0: 台選び判定 ========== -->
+<div id="page0" class="page active">
+  <div class="card">
+    <div class="card-title">📊 台の現状を入力</div>
+    <div class="row2">
+      <div>
+        <label>現在のゲーム数</label>
+        <input type="number" id="t0_games" placeholder="例: 350" min="0" oninput="syncCzEst()">
+      </div>
+      <div>
+        <label>CZスルー回数</label>
+        <div class="cz-mode-toggle">
+          <div class="cz-mode-btn active" id="cz_btn_known" onclick="setCzMode('known')">端末で確認済</div>
+          <div class="cz-mode-btn" id="cz_btn_unknown" onclick="setCzMode('unknown')">不明／推計</div>
+        </div>
+        <div id="cz_known_area">
+          <input type="number" id="t0_cz_skip" placeholder="例: 3" min="0" max="10" oninput="syncCzEst()">
+        </div>
+        <div id="cz_unknown_area" style="display:none">
+          <div class="cz-unknown-box">
+            <div class="tip">💡 まず筐体で確認できます</div>
+            <div class="tip-body">台の<strong style="color:var(--text)">待機画面PUSHボタン</strong>を押すと「遊技データ」画面が表示され、当日のCZ回数が確認可能。ホールの端末に出なくてもOK（ごん氏資料より）。</div>
+          </div>
+          <div style="margin-top:10px">
+            <label style="margin-top:0">筐体でも確認できない場合 — ゲーム数から自動推計</label>
+            <div id="cz_est_result" class="cz-est-result"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="row2">
+      <div>
+        <label>直近CZ連続失敗数</label>
+        <input type="number" id="t0_cz_fail" placeholder="例: 1" min="0" max="10">
+      </div>
+      <div>
+        <label>現在の差枚数</label>
+        <input type="number" id="t0_samai" placeholder="例: -500" >
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🎰 直近ボーナス状況</div>
+    <label>直近ボーナス種類（最後のもの）</label>
+    <select id="t0_last_bonus">
+      <option value="">-- 選択 --</option>
+      <option value="none">まだ当たりなし</option>
+      <option value="rb">RB（レギュラー）</option>
+      <option value="bb_blue">BB 青7</option>
+      <option value="bb_red">BB 赤7</option>
+      <option value="extra">エクストラBB</option>
+      <option value="end">エンディング</option>
+    </select>
+
+    <label>1G連の有無（今有利区間中）</label>
+    <select id="t0_1gcon">
+      <option value="">-- 選択 --</option>
+      <option value="none">なし（まだ1度も）</option>
+      <option value="1_2">1〜2連あり</option>
+      <option value="3_4">3〜4連あり</option>
+      <option value="5plus">5連以上あり</option>
+    </select>
+
+    <label>直近ボーナス連続回数（現有利区間）</label>
+    <select id="t0_chain">
+      <option value="">-- 選択 --</option>
+      <option value="0">なし / 単発</option>
+      <option value="2">2連</option>
+      <option value="3">3連</option>
+      <option value="4">4連</option>
+      <option value="5plus">5連以上（上位AT）</option>
+    </select>
+
+    <label>RBが連続しているか</label>
+    <select id="t0_rb_streak">
+      <option value="no">いいえ</option>
+      <option value="2">RB2連続</option>
+      <option value="3plus">RB3連続以上</option>
+    </select>
+
+    <label>マリアージュ後の展開（あれば）</label>
+    <select id="t0_marriage">
+      <option value="na">まだ / 不明</option>
+      <option value="red7_single">赤7単発→引き戻しなし</option>
+      <option value="red7_connect">赤7から連チャン</option>
+      <option value="blue_single">青7単発</option>
+      <option value="continue">その後も連チャン</option>
+    </select>
+  </div>
+
+  <button class="btn" onclick="judgeTable()">🔍 台を判定する</button>
+
+  <div id="t0_result" class="result-box">
+    <div id="t0_verdict" class="verdict"></div>
+    <div id="t0_score_wrap" class="score-bar-wrap">
+      <div class="score-label"><span>優遇スコア</span><span id="t0_score_val">0/100</span></div>
+      <div class="score-bar"><div id="t0_score_fill" class="score-fill" style="width:0%"></div></div>
+    </div>
+    <div style="margin-top:12px">
+      <ul id="t0_reasons" class="reason-list"></ul>
+    </div>
+  </div>
+</div>
+
+<!-- ========== TAB 1: やめ時判定 ========== -->
+<div id="page1" class="page">
+  <div class="card">
+    <div class="card-title">⏹ やめ時チェッカー</div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:12px">直近の挙動を選択して即判定。「冷遇示唆=即やめ」が鉄則。</p>
+
+    <label>直近ボーナス結果</label>
+    <select id="t1_result">
+      <option value="">-- 選択 --</option>
+      <option value="rb_single">RB単発（引き戻しなし）</option>
+      <option value="rb_single_connect">RB→引き戻しBB</option>
+      <option value="bb_single">BB単発（引き戻しなし）</option>
+      <option value="bb_2_3">BB 2〜3連</option>
+      <option value="bb_4plus">BB 4連以上</option>
+      <option value="marriage_red7">マリアージュ後 赤7単発</option>
+      <option value="marriage_connect">マリアージュ後 連チャン</option>
+    </select>
+
+    <label>このボーナスでの総獲得枚数（今有利区間）</label>
+    <input type="number" id="t1_coins" placeholder="例: 1200" min="0">
+
+    <label>CZ前兆失敗回数（今ボーナス後）</label>
+    <select id="t1_cz_fail2">
+      <option value="0">0回（失敗なし）</option>
+      <option value="1">1回失敗</option>
+      <option value="2">2回失敗</option>
+      <option value="3plus">3回以上失敗</option>
+    </select>
+
+    <label>CZ1G目アイキャッチ（最後のCZ）</label>
+    <select id="t1_eyecatch">
+      <option value="other">白以外</option>
+      <option value="white">白（冷遇示唆）</option>
+    </select>
+
+    <label>現在のゲーム数（ボーナス後）</label>
+    <input type="number" id="t1_games2" placeholder="例: 120" min="0">
+
+    <label>有利区間差枚数（概算）</label>
+    <input type="number" id="t1_samai2" placeholder="例: 1400" min="-5000">
+  </div>
+
+  <button class="btn" onclick="judgeYame()">⏹ やめ時を判定する</button>
+
+  <div id="t1_result" class="result-box">
+    <div id="t1_verdict" class="verdict"></div>
+    <div id="t1_detail" style="font-size:13px;margin-top:8px;line-height:1.8"></div>
+  </div>
+</div>
+
+<!-- ========== TAB 2: 有利区間計算 ========== -->
+<div id="page2" class="page">
+  <div class="card">
+    <div class="card-title">🧮 有利区間差枚 計算機</div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:12px">ボーナス履歴から現在の有利区間差枚数を算出します。<br>1.65枚/G のコインロス（ごん氏算出値）で計算。</p>
+
+    <div class="cz-unknown-box" style="margin-bottom:12px">
+      <div class="tip">💡 CZ回数がホール端末に出ない場合</div>
+      <div class="tip-body">
+        <strong style="color:var(--text)">①筐体PUSH→遊技データ</strong>で当日CZ回数を確認（有利区間切断前のみ）。<br>
+        切断後でCZ数不明なら：<strong style="color:var(--text)">切断後ゲーム数 ÷ 200</strong> で概算。CZ1回あたりのロスは平均−18.8枚と小さいため大勢に影響なし（ごん氏資料より）。
+      </div>
+    </div>
+    <div class="section-title">ボーナス履歴（直近から逆順に入力）</div>
+    <div id="hist_list" class="history-list"></div>
+    <button class="add-btn" onclick="addHistItem()">＋ ボーナスを追加</button>
+
+    <div style="margin-top:14px">
+      <label>通常時合計消化ゲーム数</label>
+      <input type="number" id="t2_normal_g" placeholder="例: 113" min="0">
+    </div>
+    <div>
+      <label>CZ中合計コインロス枚数</label>
+      <input type="number" id="t2_cz_loss" placeholder="例: 52" min="0">
+    </div>
+    <div>
+      <label>有利区間 前回切断枚数（初回は0）</label>
+      <input type="number" id="t2_prev_cut" placeholder="例: 0" value="0" min="0">
+    </div>
+  </div>
+
+  <button class="btn" onclick="calcRieki()">🧮 差枚数を計算する</button>
+
+  <div id="t2_result" class="result-box green show" style="margin-top:12px">
+    <div class="info-row">
+      <span>ボーナス獲得合計</span>
+      <span id="r2_bonus" class="info-val pos">—</span>
+    </div>
+    <div class="info-row">
+      <span>コインロス推計</span>
+      <span id="r2_loss" class="info-val neg">—</span>
+    </div>
+    <div class="info-row">
+      <span>有利区間差枚（現在）</span>
+      <span id="r2_diff" class="info-val" style="font-size:18px">—</span>
+    </div>
+    <div class="info-row">
+      <span>初回切断まで残り枚数</span>
+      <span id="r2_to_cut1" class="info-val">—</span>
+    </div>
+    <div class="info-row">
+      <span>完走（2400枚）まで残り</span>
+      <span id="r2_to_end" class="info-val">—</span>
+    </div>
+    <div id="r2_warn" style="margin-top:10px;font-size:13px;font-weight:700"></div>
+  </div>
+</div>
+
+<!-- ========== TAB 3: 設定チェック ========== -->
+<div id="page3" class="page">
+  <div class="card">
+    <div class="card-title">🔑 設定判別チェックリスト</div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:12px">確認できた項目にチェック。下に設定推測スコアが表示されます。</p>
+
+    <div class="section-title">🏆 最重要：エクストラ関連</div>
+    <div id="check_extra"></div>
+
+    <div class="section-title">🔴 赤7 関連</div>
+    <div id="check_red7"></div>
+
+    <div class="section-title">📋 REG中キャラ</div>
+    <div id="check_char"></div>
+
+    <div class="section-title">🎬 終了画面・演出</div>
+    <div id="check_screen"></div>
+
+    <div class="section-title">👗 藤原の衣装変化</div>
+    <div id="check_outfit"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">📊 設定推測スコア</div>
+    <div class="score-bar-wrap">
+      <div class="score-label"><span>高設定可能性</span><span id="s3_val">0 pt</span></div>
+      <div class="score-bar"><div id="s3_fill" class="score-fill" style="width:0%;background:var(--accent2)"></div></div>
+    </div>
+    <div id="s3_verdict" style="margin-top:12px;font-size:14px;font-weight:700"></div>
+    <div id="s3_detail" style="margin-top:8px;font-size:12px;color:var(--muted);line-height:1.7"></div>
+  </div>
+</div>
+
+<!-- ========== TAB 4: 狙い目ガイド ========== -->
+<div id="page4" class="page">
+  <div class="card">
+    <div class="card-title">🎯 狙い目 / 期待値早見表</div>
+
+    <div class="section-title">★★★ 最強ハイエナ（機械割149%）</div>
+    <div class="info-row"><span>CZスルー6回以上 + 500G以上</span><span class="info-val pos">機械割 149%</span></div>
+    <div class="info-row"><span>期待値（目安）</span><span class="info-val pos">+4,000〜+7,000円</span></div>
+
+    <div class="section-title">★★ 強ゾーン狙い（機械割110%）</div>
+    <div class="info-row"><span>内部高確 + ゾーン（130/300/600G）</span><span class="info-val pos">機械割 ~110%</span></div>
+    <div class="info-row"><span>CZ期待度（内部高確時）</span><span class="info-val">~35%</span></div>
+
+    <div class="section-title">★ AT後フォロー（機械割103%）</div>
+    <div class="info-row"><span>AT終了後100G以内</span><span class="info-val">機械割 ~103%</span></div>
+    <div class="info-row"><span>引き戻しモード可能性</span><span class="info-val">~18%</span></div>
+
+    <div class="section-title">📈 基本狙い目ゲーム数（2026年実践値）</div>
+    <div class="info-row"><span>BIG後</span><span class="info-val">550G〜</span></div>
+    <div class="info-row"><span>REG後</span><span class="info-val">400G〜</span></div>
+    <div class="info-row"><span>リセット後</span><span class="info-val">0G〜天井</span></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">⛔ 絶対に避けるべき状況</div>
+    <ul class="reason-list">
+      <li><span class="tag neg">冷遇</span> CZ 3回以上連続失敗</li>
+      <li><span class="tag neg">冷遇</span> RB が 3連続以上</li>
+      <li><span class="tag neg">冷遇</span> CZ1G目アイキャッチが白</li>
+      <li><span class="tag neg">冷遇</span> マリアージュ後に赤7単発（引き戻しなし）</li>
+      <li><span class="tag neg">冷遇</span> 1G連が全く発生しない or 最大2連止まり</li>
+      <li><span class="tag neg">冷遇</span> BB単発→RB単発→BB単発の繰り返し</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="card-title">✅ 優遇の兆候</div>
+    <ul class="reason-list">
+      <li><span class="tag pos">優遇</span> CZ 1発成功 or 1回失敗のみ</li>
+      <li><span class="tag pos">優遇</span> 1G連が4連以上発生</li>
+      <li><span class="tag pos">優遇</span> BB比率が高い（赤7も出ている）</li>
+      <li><span class="tag pos">優遇</span> 引き戻しから連チャンに発展</li>
+      <li><span class="tag pos">優遇</span> エクストラBBが出現</li>
+      <li><span class="tag pos">優遇</span> 揉みながら耐えている「上空ミミズ」挙動</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="card-title">💡 スランプグラフパターン</div>
+    <ul class="reason-list">
+      <li><span class="tag pos">狙い目</span> 上空ミミズ：爆発→揉み→次の爆発待ち</li>
+      <li><span class="tag neu">注意</span> 朝イチ完走後：高設定確認できるまで様子見</li>
+      <li><span class="tag neg">回避</span> 無限冷遇：直滑降グラフは打ってはいけない</li>
+      <li><span class="tag neu">注意</span> 特定差枚（-3000〜-6000）から強ATあり</li>
+    </ul>
+  </div>
+
+  <div class="notice">
+    ※本ツールはごん氏・バイブル等の資料を元に判定ロジックを構築した参考ツールです。<br>
+    ギャンブルに絶対的な必勝法はなく、損失リスクが伴います。
+  </div>
+</div>
+
+<script>
+// ============ CZスルー 不明モード ============
+let czMode = 'known';
+
+function setCzMode(mode) {
+  czMode = mode;
+  document.getElementById('cz_btn_known').classList.toggle('active', mode === 'known');
+  document.getElementById('cz_btn_unknown').classList.toggle('active', mode === 'unknown');
+  document.getElementById('cz_known_area').style.display = mode === 'known' ? '' : 'none';
+  document.getElementById('cz_unknown_area').style.display = mode === 'unknown' ? '' : 'none';
+  if (mode === 'unknown') syncCzEst();
+}
+
+function syncCzEst() {
+  if (czMode !== 'unknown') return;
+  const games = parseInt(document.getElementById('t0_games').value) || 0;
+  // 平均CZ当選は約1/200G。スルー数はCZに当たって失敗した回数なので、
+  // 総ゲーム数からCZ試行回数を推計し、それをスルー数の目安とする。
+  const estCz = Math.floor(games / 200);
+  const lo = Math.max(0, estCz - 1);
+  const hi = estCz + 2;
+  const el = document.getElementById('cz_est_result');
+  if (games < 100) {
+    el.innerHTML = '<span style="color:var(--muted)">ゲーム数を入力すると推計します</span>';
+    document.getElementById('t0_cz_skip').value = '';
+    return;
+  }
+  // 推計値の中央値をスルー回数として使用
+  const mid = estCz;
+  document.getElementById('t0_cz_skip').value = mid;
+  let urgency = '';
+  if (mid >= 6) urgency = '<span style="color:var(--green);font-weight:700"> 🔥 天井圏！最強狙い目</span>';
+  else if (mid >= 4) urgency = '<span style="color:var(--yellow);font-weight:700"> ⚠️ 天井接近</span>';
+  el.innerHTML = `推計CZスルー数：<strong>${lo}〜${hi}回</strong>（判定には<strong>${mid}回</strong>を使用）${urgency}<br><span style="font-size:11px;color:var(--muted)">※平均CZ当選1/200Gで算出。大きく外れる場合あり。信頼度：低</span>`;
+}
+
+// ============ Tab switch ============
+function switchTab(n) {
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', i===n));
+  document.querySelectorAll('.page').forEach((p,i) => p.classList.toggle('active', i===n));
+}
+
+// ============ TAB 0: 台選び判定 ============
+function judgeTable() {
+  const games     = parseInt(document.getElementById('t0_games').value) || 0;
+  const czSkip    = parseInt(document.getElementById('t0_cz_skip').value) || 0;
+  const czFail    = parseInt(document.getElementById('t0_cz_fail').value) || 0;
+  const samai     = parseInt(document.getElementById('t0_samai').value) || 0;
+  const lastBonus = document.getElementById('t0_last_bonus').value;
+  const g1con     = document.getElementById('t0_1gcon').value;
+  const chain     = document.getElementById('t0_chain').value;
+  const rbStreak  = document.getElementById('t0_rb_streak').value;
+  const marriage  = document.getElementById('t0_marriage').value;
+
+  let score = 50; // baseline
+  const reasons = [];
+
+  // 優遇プラス要素
+  if (g1con === '5plus') { score += 20; reasons.push(['pos','5連以上あり → 上位AT（引き戻し50%）圏内']); }
+  else if (g1con === '3_4') { score += 12; reasons.push(['pos','3〜4連あり → 優遇継続中の可能性高']); }
+  else if (g1con === '1_2') { score += 4; reasons.push(['neu','1〜2連あり → 標準的']); }
+  else if (g1con === 'none') { score -= 8; reasons.push(['neg','1G連なし → 冷遇の可能性']); }
+
+  if (chain === '5plus') { score += 15; reasons.push(['pos','5連以上 → 引き戻し50% 上位ATモード']); }
+  else if (chain === '4') { score += 8; reasons.push(['pos','4連 → 上位AT圏内近い']); }
+  else if (chain === '3') { score += 4; reasons.push(['neu','3連 → まずまずの連チャン']); }
+
+  if (lastBonus === 'extra') { score += 18; reasons.push(['pos','エクストラBBあり → 高設定/優遇の強い示唆']); }
+  else if (lastBonus === 'bb_red') { score += 12; reasons.push(['pos','赤7BBあり → 高設定挙動']); }
+  else if (lastBonus === 'end') { score += 10; reasons.push(['pos','エンディングあり → 完走経験台']); }
+  else if (lastBonus === 'rb') { score -= 5; reasons.push(['neg','RB直近 → 弱め。連続なら冷遇示唆']); }
+
+  if (marriage === 'red7_single') { score -= 20; reasons.push(['neg','マリアージュ後 赤7単発 → 冷遇示唆の代表格！即やめ推奨']); }
+  else if (marriage === 'red7_connect') { score += 15; reasons.push(['pos','マリアージュ後 赤7から連チャン → 優遇継続']); }
+  else if (marriage === 'continue') { score += 10; reasons.push(['pos','マリアージュ後も連チャン → 優遇圏']); }
+
+  // 冷遇マイナス要素
+  if (czFail >= 3) { score -= 25; reasons.push(['neg','CZ 3回以上連続失敗 → 冷遇確定に近い']); }
+  else if (czFail === 2) { score -= 15; reasons.push(['neg','CZ 2回連続失敗 → 冷遇の疑い強い']); }
+  else if (czFail === 1) { score -= 5; reasons.push(['neu','CZ 1回失敗 → やや注意']); }
+  else if (czFail === 0 && g1con !== '') { score += 5; reasons.push(['pos','CZ連続失敗なし → 良好']); }
+
+  if (rbStreak === '3plus') { score -= 20; reasons.push(['neg','RB 3連続以上 → 冷遇確定示唆。RBRBRB地獄']); }
+  else if (rbStreak === '2') { score -= 10; reasons.push(['neg','RB 2連続 → 冷遇の可能性高']); }
+
+  // 有利区間差枚での判断
+  if (samai >= 1250 && samai < 1850) { score += 12; reasons.push(['pos',`差枚+${samai}枚 → 有利切断狙い圏内（切断目安+1826枚）`]); }
+  else if (samai >= 1850) { score += 8; reasons.push(['neu',`差枚+${samai}枚 → すでに1回切断済みの可能性`]); }
+  else if (samai < -3000) { score += 5; reasons.push(['neu',`差枚${samai}枚 → ヤケクソモード発動可能性域`]); }
+
+  // ゾーン
+  const zone = [130, 300, 600];
+  const nearZone = zone.find(z => games >= z - 15 && games <= z + 30);
+  if (nearZone) { score += 8; reasons.push(['pos',`現在${games}G → ${nearZone}Gゾーン付近 CZ当選率UP`]); }
+
+  // CZスルー天井狙い
+  if (czSkip >= 6) { score += 20; reasons.push(['pos',`CZ${czSkip}スルー → 最強狙い目圏内（機械割149%）！`]); }
+  else if (czSkip >= 4) { score += 10; reasons.push(['neu',`CZ${czSkip}スルー → 天井が近づいてきた`]); }
+
+  score = Math.max(0, Math.min(100, score));
+
+  // 表示
+  const box = document.getElementById('t0_result');
+  const verdict = document.getElementById('t0_verdict');
+  box.className = 'result-box show';
+
+  let label, cls, boxCls;
+  if (score >= 70) { label = '✅ 狙い目あり'; cls = 'go'; boxCls = 'green'; }
+  else if (score >= 40) { label = '⚠️ 要注意 / 様子見'; cls = 'caution'; boxCls = 'yellow'; }
+  else { label = '🚫 狙い目なし / 即やめ推奨'; cls = 'stop'; boxCls = 'red'; }
+
+  box.className = `result-box show ${boxCls}`;
+  verdict.className = `verdict ${cls}`;
+  verdict.textContent = label;
+
+  document.getElementById('t0_score_val').textContent = `${score}/100`;
+  const fill = document.getElementById('t0_score_fill');
+  fill.style.width = score + '%';
+  fill.style.background = score >= 70 ? 'var(--green)' : score >= 40 ? 'var(--yellow)' : 'var(--red)';
+
+  const ul = document.getElementById('t0_reasons');
+  ul.innerHTML = reasons.map(([type, text]) =>
+    `<li><span class="tag ${type}">${type === 'pos' ? '優遇+' : type === 'neg' ? '冷遇-' : '中立'}</span><span>${text}</span></li>`
+  ).join('') || '<li>入力が少なく判定できません</li>';
+}
+
+// ============ TAB 1: やめ時判定 ============
+function judgeYame() {
+  const result    = document.getElementById('t1_result').value;
+  const coins     = parseInt(document.getElementById('t1_coins').value) || 0;
+  const czFail2   = document.getElementById('t1_cz_fail2').value;
+  const eyecatch  = document.getElementById('t1_eyecatch').value;
+  const games2    = parseInt(document.getElementById('t1_games2').value) || 0;
+  const samai2    = parseInt(document.getElementById('t1_samai2').value) || 0;
+
+  let stop = false;
+  let caution = false;
+  let detail = [];
+
+  if (eyecatch === 'white') {
+    stop = true;
+    detail.push('🚫 CZ1G目アイキャッチ白 → <strong>即やめ</strong>（冷遇示唆の最強シグナル）');
+  }
+  if (czFail2 === '3plus') {
+    stop = true;
+    detail.push('🚫 CZ3回以上連続失敗 → <strong>即やめ</strong>（冷遇確定）');
+  }
+  if (czFail2 === '2') {
+    stop = true;
+    detail.push('🚫 CZ2回連続失敗 → <strong>やめ推奨</strong>（冷遇示唆）');
+  }
+  if (result === 'marriage_red7') {
+    stop = true;
+    detail.push('🚫 マリアージュ後 赤7単発 → <strong>問答無用でやめ</strong>（冷遇示唆の代表格）');
+  }
+
+  if (!stop) {
+    if (result === 'rb_single') {
+      if (games2 <= 130) {
+        detail.push('⚠️ RB単発 → 130Gゾーン確認後やめ。チャ目9以下・夕方以降なら100G辞めも可。');
+        caution = true;
+      } else {
+        detail.push('🚫 RB単発 + 130G超え → やめ推奨');
+        stop = true;
+      }
+    }
+    if (result === 'bb_single') {
+      if (games2 <= 130) {
+        detail.push('⚠️ BB単発（引き戻しなし） → 130G確認やめ。差枚が有利切断圏（+1250枚〜）なら続行も可。');
+        caution = true;
+      } else {
+        detail.push('🚫 BB単発 + 130G超え → やめ推奨');
+        stop = true;
+      }
+    }
+    if (result === 'bb_2_3') {
+      detail.push('⚠️ BB 2〜3連 → 15チャンス目まで続行。ノーヒットならやめ。');
+      caution = true;
+    }
+    if (result === 'bb_4plus') {
+      if (coins >= 1000 && samai2 < 1250) {
+        stop = true;
+        detail.push('🚫 BB4連以上・総獲得1000枚超え → 連抜けで冷遇移行が多い。<strong>すっぱりやめ</strong>。');
+      } else if (samai2 >= 1250) {
+        detail.push('✅ BB4連以上だが差枚+1250枚〜 → 有利切断狙いで続行可。');
+      } else {
+        detail.push('⚠️ BB4連以上だが獲得1000枚未満 → 様子見続行可。');
+        caution = true;
+      }
+    }
+    if (result === 'marriage_connect') {
+      detail.push('✅ マリアージュ後も連チャン → 優遇継続。続行推奨。');
+    }
+    if (result === 'rb_single_connect') {
+      detail.push('✅ RB→引き戻しBB → 続行可。ただし次のボーナス結果に注目。');
+    }
+  }
+
+  // 有利切断狙い追記
+  if (samai2 >= 1250 && samai2 < 1850 && !stop) {
+    detail.push(`💰 差枚+${samai2}枚 → 有利切断狙い圏内。切断後はマリアージュ赤7単発なら即やめ。`);
+  }
+
+  const box = document.getElementById('t1_result');
+  const verdict = document.getElementById('t1_verdict');
+  let label, cls, boxCls;
+  if (stop) { label = '🚫 やめ'; cls = 'stop'; boxCls = 'red'; }
+  else if (caution) { label = '⚠️ 様子見 / 条件付き続行'; cls = 'caution'; boxCls = 'yellow'; }
+  else { label = '✅ 続行推奨'; cls = 'go'; boxCls = 'green'; }
+
+  box.className = `result-box show ${boxCls}`;
+  verdict.className = `verdict ${cls}`;
+  verdict.textContent = label;
+  document.getElementById('t1_detail').innerHTML = detail.join('<br>') || '入力してください';
+}
+
+// ============ TAB 2: 有利区間計算 ============
+let histItems = [];
+
+function addHistItem() {
+  const id = Date.now();
+  histItems.push(id);
+  const div = document.createElement('div');
+  div.className = 'history-item';
+  div.id = 'hist_' + id;
+  div.innerHTML = `
+    <select style="flex:1.2">
+      <option value="blue">青7BB</option>
+      <option value="red">赤7BB</option>
+      <option value="rb">RB</option>
+      <option value="extra">エクストラ</option>
+      <option value="end">エンディング</option>
+    </select>
+    <input type="number" placeholder="獲得枚数" min="0" style="flex:1">
+    <button class="del-btn" onclick="removeHist(${id})">✕</button>
+  `;
+  document.getElementById('hist_list').appendChild(div);
+  calcRieki();
+}
+
+function removeHist(id) {
+  document.getElementById('hist_' + id)?.remove();
+  histItems = histItems.filter(x => x !== id);
+  calcRieki();
+}
+
+function calcRieki() {
+  let totalBonus = 0;
+  document.querySelectorAll('#hist_list .history-item').forEach(item => {
+    const coins = parseInt(item.querySelectorAll('input')[0]?.value) || 0;
+    totalBonus += coins;
+  });
+
+  const normalG  = parseInt(document.getElementById('t2_normal_g').value) || 0;
+  const czLoss   = parseInt(document.getElementById('t2_cz_loss').value) || 0;
+  const prevCut  = parseInt(document.getElementById('t2_prev_cut').value) || 0;
+
+  const coinLoss = Math.round(normalG * 1.65) + czLoss;
+  const diff = totalBonus - coinLoss - prevCut;
+  const toCut1 = Math.max(0, 1826 - diff);
+  const toEnd  = Math.max(0, 2400 - diff);
+
+  document.getElementById('r2_bonus').textContent = `+${totalBonus}枚`;
+  document.getElementById('r2_loss').textContent  = `-${coinLoss}枚`;
+  const diffEl = document.getElementById('r2_diff');
+  diffEl.textContent = (diff >= 0 ? '+' : '') + diff + '枚';
+  diffEl.className = 'info-val ' + (diff >= 1250 ? 'pos' : diff < 0 ? 'neg' : '');
+
+  document.getElementById('r2_to_cut1').textContent = toCut1 > 0 ? `あと ${toCut1} 枚` : '切断条件達成済み';
+  document.getElementById('r2_to_end').textContent  = toEnd  > 0 ? `あと ${toEnd} 枚`  : '完走済み（次の有利区間）';
+
+  let warn = '';
+  if (diff >= 1250 && diff < 1826) {
+    warn = '⚡ 有利切断狙い圏内！ 打ち捨てるな！';
+    document.getElementById('r2_warn').style.color = 'var(--yellow)';
+  } else if (diff >= 1826) {
+    warn = '🔥 有利区間切断条件達成圏！ 最優先確保！';
+    document.getElementById('r2_warn').style.color = 'var(--green)';
+  } else if (diff >= 2200) {
+    warn = '🎉 完走（エンディング）条件達成！';
+    document.getElementById('r2_warn').style.color = 'var(--green)';
+  }
+  document.getElementById('r2_warn').textContent = warn;
+}
+
+// ============ TAB 3: 設定チェック ============
+const checkData = {
+  check_extra: [
+    { text: 'エクストラBBが出現した',            note: '最重要！設定6は設定1の3倍以上の頻度', pts: 25, badge: 's4' },
+    { text: '初当たりBBからエクストラ連打',       note: 'ほぼ設定5〜6確定レベル',             pts: 30, badge: 's6' },
+    { text: '直撃エクストラ（CZ経由なし）',       note: '高設定挙動。強い',                   pts: 20, badge: 's4' },
+  ],
+  check_red7: [
+    { text: '初当たりで赤7BBを2回以上引いている', note: '設定4〜6のどれかと判断していいレベル', pts: 20, badge: 's4' },
+    { text: 'RBから引き戻しで赤7BB',             note: 'ヤケクソモード候補にもなる',           pts: 10, badge: 's2' },
+    { text: '直撃BB（赤7）が出た',               note: '参考程度。ただし直撃エクストラなら強い', pts: 8, badge: 's2' },
+  ],
+  check_char: [
+    { text: 'REG中：白銀パパ出現',    note: '設定4以上濃厚',   pts: 12, badge: 's4' },
+    { text: 'REG中：早坂出現',        note: '設定2以上濃厚',   pts: 8,  badge: 's2' },
+    { text: 'REG中：虹背景',          note: '設定4以上濃厚',   pts: 12, badge: 's4' },
+    { text: 'REG中：大仏出現',        note: '上位モード示唆',  pts: 6,  badge: 'yuuguu' },
+    { text: 'REG中：ベッツィー出現',  note: '通常A否定',       pts: 6,  badge: 'yuuguu' },
+  ],
+  check_screen: [
+    { text: 'BB終了画面：金枠',   note: '設定6濃厚',     pts: 30, badge: 's6' },
+    { text: 'BB終了画面：銀枠',   note: '設定4以上',     pts: 15, badge: 's4' },
+    { text: 'BB終了画面：紫枠',   note: '設定2以上',     pts: 8,  badge: 's2' },
+    { text: 'BB終了画面：花火',   note: '1G連引き戻し濃厚', pts: 5, badge: 'yuuguu' },
+  ],
+  check_outfit: [
+    { text: '藤原：体操着→制服',       note: '設定6',      pts: 25, badge: 's6' },
+    { text: '藤原：体操着→ラブ探偵',   note: '設定4以上',  pts: 15, badge: 's4' },
+    { text: '藤原：ラブ探偵→制服',     note: '設定2以上',  pts: 8,  badge: 's2' },
+  ],
+};
+
+function buildChecklist() {
+  for (const [id, items] of Object.entries(checkData)) {
+    const container = document.getElementById(id);
+    container.innerHTML = items.map((item, i) => `
+      <div class="check-item" onclick="toggleCheck('${id}_${i}')">
+        <input type="checkbox" id="${id}_${i}" onchange="calcSettingScore()" onclick="event.stopPropagation()">
+        <div>
+          <div class="check-label">${item.text} <span class="badge ${item.badge}">${item.badge === 's6' ? '設定6' : item.badge === 's4' ? '設定4+' : item.badge === 's2' ? '設定2+' : '優遇'}</span></div>
+          <div class="check-note">${item.note}</div>
+        </div>
+      </div>
+    `).join('');
+  }
+}
+
+function toggleCheck(id) {
+  const cb = document.getElementById(id);
+  if (cb) { cb.checked = !cb.checked; calcSettingScore(); }
+}
+
+function calcSettingScore() {
+  let total = 0;
+  let maxPts = 0;
+  for (const [id, items] of Object.entries(checkData)) {
+    items.forEach((item, i) => {
+      maxPts += item.pts;
+      if (document.getElementById(`${id}_${i}`)?.checked) total += item.pts;
+    });
+  }
+  const pct = Math.min(100, Math.round(total / maxPts * 100));
+  document.getElementById('s3_val').textContent = `${total} pt`;
+  const fill = document.getElementById('s3_fill');
+  fill.style.width = pct + '%';
+  fill.style.background = pct >= 60 ? 'var(--green)' : pct >= 30 ? 'var(--yellow)' : 'var(--accent2)';
+
+  let verdict, detail;
+  if (total >= 30) {
+    verdict = '🔥 高設定の可能性高（設定4〜6圏）';
+    detail = '複数の高設定示唆が確認できています。自信を持って続行できる状況です。';
+  } else if (total >= 15) {
+    verdict = '⚠️ 設定2〜4 程度の可能性';
+    detail = 'いくつか設定示唆あり。追加で示唆が出れば高設定確信度UP。';
+  } else if (total > 0) {
+    verdict = '📊 設定1〜2 程度か要観察';
+    detail = '示唆が少ない状態。設定よりも優遇/冷遇の判別を優先しましょう。';
+  } else {
+    verdict = '—';
+    detail = '設定示唆を確認できた項目にチェックを入れてください。';
+  }
+  document.getElementById('s3_verdict').textContent = verdict;
+  document.getElementById('s3_detail').textContent = detail;
+}
+
+// ============ Init ============
+buildChecklist();
+calcRieki();
+addHistItem();
+</script>
+</body>
+</html>
