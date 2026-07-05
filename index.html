@@ -424,9 +424,9 @@
     <div class="info-row"><span>内部高確 + ゾーン（130/300/600G）</span><span class="info-val pos">機械割 ~110%</span></div>
     <div class="info-row"><span>CZ期待度（内部高確時）</span><span class="info-val">~35%</span></div>
 
-    <div class="section-title">★ AT後フォロー（機械割103%）</div>
-    <div class="info-row"><span>AT終了後100G以内</span><span class="info-val">機械割 ~103%</span></div>
-    <div class="info-row"><span>引き戻しモード可能性</span><span class="info-val">~18%</span></div>
+    <div class="section-title">★ AT後フォロー（機械割112%）</div>
+    <div class="info-row"><span>AT終了後100G以内</span><span class="info-val">機械割 ~112%</span></div>
+    <div class="info-row"><span>引き戻しモード可能性</span><span class="info-val">~25%</span></div>
 
     <div class="section-title">📈 基本狙い目ゲーム数（2026年実践値）</div>
     <div class="info-row"><span>BIG後</span><span class="info-val">550G〜</span></div>
@@ -464,7 +464,7 @@
       <li><span class="tag pos">狙い目</span> 上空ミミズ：爆発→揉み→次の爆発待ち</li>
       <li><span class="tag neu">注意</span> 朝イチ完走後：高設定確認できるまで様子見</li>
       <li><span class="tag neg">回避</span> 無限冷遇：直滑降グラフは打ってはいけない</li>
-      <li><span class="tag neu">注意</span> 特定差枚（-3000〜-6000）から強ATあり</li>
+      <li><span class="tag neu">注意</span> パターンD：差枚-2000〜-2500付近 + G数条件で強AT（バイブル基準）</li>
     </ul>
   </div>
 
@@ -621,7 +621,7 @@ function judgeTable() {
   // 有利区間差枚での判断
   if (samai >= 1250 && samai < 1850) { score += 12; reasons.push(['pos',`差枚+${samai}枚 → 有利切断狙い圏内（切断目安+1826枚）`]); }
   else if (samai >= 1850) { score += 8; reasons.push(['neu',`差枚+${samai}枚 → すでに1回切断済みの可能性`]); }
-  else if (samai < -3000) { score += 5; reasons.push(['neu',`差枚${samai}枚 → ヤケクソモード発動可能性域`]); }
+  else if (samai <= -2000) { score += 5; reasons.push(['neu',`差枚${samai}枚 → バイブル基準：-2000〜-2500付近が爆発トリガー域（G数条件要確認）`]); }
 
   // ゾーン
   const zone = [130, 300, 600];
@@ -805,15 +805,18 @@ function calcRieki() {
   document.getElementById('r2_to_end').textContent  = toEnd  > 0 ? `あと ${toEnd} 枚`  : '完走済み（次の有利区間）';
 
   let warn = '';
-  if (diff >= 1250 && diff < 1826) {
-    warn = '⚡ 有利切断狙い圏内！ 打ち捨てるな！';
-    document.getElementById('r2_warn').style.color = 'var(--yellow)';
-  } else if (diff >= 1826) {
-    warn = '🔥 有利区間切断条件達成圏！ 最優先確保！';
+  if (diff >= 2400) {
+    warn = '🎉 +2400超 → 完走圏（ストックあり終了時の完走条件）';
     document.getElementById('r2_warn').style.color = 'var(--green)';
   } else if (diff >= 2200) {
-    warn = '🎉 完走（エンディング）条件達成！';
+    warn = '⚡ +2200 → エンディング移行条件達成！（ストックなし消化中）';
     document.getElementById('r2_warn').style.color = 'var(--green)';
+  } else if (diff >= 1826) {
+    warn = '🔥 +1826 → 有利区間切断条件達成圏！ 最優先確保！';
+    document.getElementById('r2_warn').style.color = 'var(--yellow)';
+  } else if (diff >= 1250) {
+    warn = '⚡ 有利切断狙い圏内（+1250〜1826）！ 打ち捨てるな！';
+    document.getElementById('r2_warn').style.color = 'var(--yellow)';
   }
   document.getElementById('r2_warn').textContent = warn;
 }
@@ -821,7 +824,7 @@ function calcRieki() {
 // ============ TAB 3: 設定チェック ============
 const checkData = {
   check_extra: [
-    { text: 'エクストラBBが出現した',            note: '最重要！設定6は設定1の3倍以上の頻度', pts: 25, badge: 's4' },
+    { text: 'エクストラBBが出現した',            note: '最重要！設定差5.3倍（高設定1.1% vs 低設定0.21%・ごん氏調べ）', pts: 25, badge: 's4' },
     { text: '初当たりBBからエクストラ連打',       note: 'ほぼ設定5〜6確定レベル',             pts: 30, badge: 's6' },
     { text: '直撃エクストラ（CZ経由なし）',       note: '高設定挙動。強い',                   pts: 20, badge: 's4' },
   ],
