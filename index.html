@@ -120,10 +120,11 @@
   .cz-est-result strong { color: var(--yellow); font-size: 16px; }
 
   /* ========== 履歴読み判定 ========== */
-  .hreki-col-head { display: grid; grid-template-columns: 26px 1fr 1fr 34px; gap: 6px; margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  .hreki-col-head { display: grid; grid-template-columns: 22px 1fr 1fr 52px 28px; gap: 5px; margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
   .hreki-col-head span { font-size: 10px; color: var(--muted); font-weight: 700; text-align: center; }
-  .hreki-input-row { display: grid; grid-template-columns: 26px 1fr 1fr 34px; gap: 6px; align-items: center; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,.04); }
-  .hreki-input-row input { padding: 8px 6px; }
+  .hreki-input-row { display: grid; grid-template-columns: 22px 1fr 1fr 52px 28px; gap: 5px; align-items: center; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,.04); }
+  .hreki-input-row input { padding: 8px 4px; }
+  .hreki-input-row select { padding: 8px 2px; font-size: 12px; }
   .hreki-num { font-size: 13px; font-weight: 700; color: var(--muted); text-align: center; }
   .itab { width: 100%; border-collapse: collapse; font-size: 12px; }
   .itab th { font-size: 10px; color: var(--muted); padding: 6px 4px; border-bottom: 1px solid var(--border); font-weight: 600; text-align: left; }
@@ -478,19 +479,21 @@
   <div class="card">
     <div class="card-title">📋 ボーナス履歴を入力</div>
     <div class="cz-unknown-box" style="margin-bottom:14px">
-      <div class="tip">💡 端末の見方</div>
+      <div class="tip">💡 端末の見方（P-TOWN等の形式）</div>
       <div class="tip-body">
-        ホール端末「ボーナス履歴」画面の<br>
-        ・<strong style="color:var(--text)">累計G数</strong>（当日ここまでの合計ゲーム数）<br>
-        ・<strong style="color:var(--text)">差枚数</strong>（当日収支。マイナスもあり）<br>
-        を古い順（上から）に入力してください。
+        各ボーナス行の<br>
+        ・<strong style="color:var(--text)">G数</strong>（そのボーナスまでの区間G数、前ボーナス後からのG数）<br>
+        ・<strong style="color:var(--text)">差枚数</strong>（そのボーナスの獲得枚数）<br>
+        ・<strong style="color:var(--text)">種別</strong>（BIG または REG）<br>
+        を古い順（B1が上）に入力してください。
       </div>
     </div>
 
     <div class="hreki-col-head">
       <span>#</span>
-      <span>累計G数</span>
+      <span>区間G数</span>
       <span>差枚数</span>
+      <span>種別</span>
       <span></span>
     </div>
     <div id="hreki_list"></div>
@@ -910,9 +913,13 @@ function addHrekiRow() {
   div.id = 'hreki_' + id;
   div.innerHTML = `
     <div class="hreki-num">${n}</div>
-    <input type="number" placeholder="例:350" min="0">
-    <input type="number" placeholder="例:-200">
-    <button class="del-btn" onclick="removeHrekiRow(${id})">✕</button>
+    <input type="number" placeholder="例:2" min="0">
+    <input type="number" placeholder="例:297" min="0">
+    <select>
+      <option value="big">BIG</option>
+      <option value="reg">REG</option>
+    </select>
+    <button class="del-btn" onclick="removeHrekiRow(${id})" style="padding:6px 6px">✕</button>
   `;
   document.getElementById('hreki_list').appendChild(div);
 }
@@ -927,66 +934,80 @@ function analyzeHistory() {
   const rows = [];
   document.querySelectorAll('#hreki_list .hreki-input-row').forEach(row => {
     const inputs = row.querySelectorAll('input[type=number]');
-    const g = parseInt(inputs[0].value);
-    const diff = parseInt(inputs[1].value);
-    if (!isNaN(g) && !isNaN(diff)) rows.push({ g, diff });
+    const sel    = row.querySelector('select');
+    const gv     = parseInt(inputs[0].value);
+    const payout = parseInt(inputs[1].value);
+    const btype  = sel ? sel.value : 'big';
+    if (!isNaN(gv) && !isNaN(payout)) rows.push({ gv, payout, btype });
   });
 
   if (rows.length < 2) { alert('ボーナスを2つ以上入力してください'); return; }
-  rows.sort((a, b) => a.g - b.g);
 
   let oneGCount = 0, maxChain = 0, currentChain = 0;
-  let rbEst = 0, bigEst = 0, hamaCount = 0;
-  const intervals = [];
+  let regCount = 0, bigHighCount = 0, hamaCount = 0;
+  const analyzed = [];
 
-  for (let i = 1; i < rows.length; i++) {
-    const gv = rows[i].g - rows[i-1].g;
-    const dv = rows[i].diff - rows[i-1].diff;
-    const payout = Math.round(dv + gv * 1.65);
+  for (let i = 0; i < rows.length; i++) {
+    const { gv, payout, btype } = rows[i];
+    const isReg = btype === 'reg';
+    const next  = rows[i + 1];
 
-    // 区間判定
+    // 区間判定（初ボーナスは前ボーナスからの区間として扱う）
     let itype, iclass;
-    if (gv <= 1)        { itype = '🔥 1G連';      iclass = 'ichi';  oneGCount++; currentChain++; }
+    if (gv <= 1)        { itype = '🔥 1G連';      iclass = 'ichi';  if (i > 0) { oneGCount++; currentChain++; } }
     else if (gv <= 10)  { itype = '✨ 超連チャン'; iclass = 'super'; currentChain++; }
     else if (gv <= 80)  { itype = '連チャン';      iclass = 'ren';   currentChain = 0; }
     else if (gv <= 300) { itype = '通常';           iclass = 'norm';  currentChain = 0; }
-    else                { itype = '⚠️ ハマり';     iclass = 'hama';  currentChain = 0; hamaCount++; }
+    else                { itype = '⚠️ ハマり';     iclass = 'hama';  currentChain = 0; if (i > 0) hamaCount++; }
     if (currentChain > maxChain) maxChain = currentChain;
 
-    // 前ボーナス種別推定
-    let bname, bclass;
-    if (gv <= 1) {
-      bname = payout >= 400 ? 'エンディング推定' : '？（1G連起点）';
-      bclass = 'big'; bigEst++;
-    } else if (gv === 2 && payout >= 350) {
-      bname = 'エクストラBB推定'; bclass = 'big'; bigEst++;
+    // このボーナスの種別推定
+    let bname, bclass, endFlag = '';
+    if (isReg) {
+      bname = 'REG'; bclass = 'rb-t'; regCount++;
     } else {
-      if (payout < 150)      { bname = 'RB';          bclass = 'rb-t'; rbEst++; }
-      else if (payout < 280) { bname = '青7 BB';      bclass = 'blue'; }
-      else if (payout < 430) { bname = '赤7 BB';      bclass = 'red7'; }
-      else                   { bname = '大役（EX/END）'; bclass = 'big'; bigEst++; }
+      // 次のボーナスが1G後 → このボーナスはエンディング
+      if (next && next.gv <= 1) {
+        bname = 'エンディング推定'; bclass = 'big'; endFlag = ' ✦次1G確定';
+      } else if (gv === 1 && i > 0) {
+        // 自身が1G連で来た → 大きめのBIG
+        bname = payout >= 700 ? 'エンディング完走' : payout >= 400 ? 'エクストラBB推定' : '連チャンBIG';
+        bclass = payout >= 400 ? 'big' : 'red7';
+        if (payout >= 400) bigHighCount++;
+      } else if (gv === 2 && payout >= 350) {
+        bname = 'エクストラBB推定'; bclass = 'big'; bigHighCount++;
+      } else if (payout >= 450) {
+        bname = 'エクストラBB/END推定'; bclass = 'big'; bigHighCount++;
+      } else if (payout >= 280) {
+        bname = '赤7 BB'; bclass = 'red7';
+      } else {
+        bname = '青7 BB'; bclass = 'blue';
+      }
     }
 
-    intervals.push({ i, gv, dv, payout, itype, iclass, bname, bclass });
+    analyzed.push({ i, gv, payout, btype, itype, iclass, bname, bclass, endFlag });
   }
 
-  // 区間テーブル描画
-  document.getElementById('hreki_tbody').innerHTML = intervals.map(iv => `
+  // テーブル描画
+  document.getElementById('hreki_tbody').innerHTML = analyzed.map(a => `
     <tr>
-      <td style="color:var(--muted);font-size:11px">B${iv.i}→B${iv.i+1}</td>
-      <td style="font-weight:700">${iv.gv}G</td>
-      <td><span class="ibadge ${iv.iclass}">${iv.itype}</span></td>
+      <td style="color:var(--muted);font-size:11px;font-weight:700">B${a.i + 1}</td>
+      <td style="font-weight:700">${a.gv}G</td>
+      <td>${a.i === 0 && a.gv > 10
+            ? `<span class="ibadge norm">初当たり</span>`
+            : `<span class="ibadge ${a.iclass}">${a.itype}</span>`}</td>
       <td>
-        <span class="bname ${iv.bclass}">${iv.bname}</span><br>
-        <span style="font-size:10px;color:var(--muted)">推定+${Math.max(0, iv.payout)}枚</span>
+        <span class="bname ${a.bclass}">${a.bname}${a.endFlag}</span><br>
+        <span style="font-size:10px;color:var(--muted)">+${a.payout}枚</span>
       </td>
     </tr>
   `).join('');
 
-  // 統計サマリー描画
-  const total = rows.length;
-  const rbRate  = total > 1 ? Math.round(rbEst  / (total-1) * 100) : 0;
-  const bigRate = total > 1 ? Math.round(bigEst / (total-1) * 100) : 0;
+  // 統計サマリー
+  const total  = rows.length;
+  const regRate = Math.round(regCount / total * 100);
+  const bigHighRate = (total - regCount) > 0
+    ? Math.round(bigHighCount / (total - regCount) * 100) : 0;
 
   document.getElementById('hreki_stats').innerHTML = `
     <div class="stat-cell">
@@ -998,48 +1019,49 @@ function analyzeHistory() {
       <div class="sl">最長連チャン数</div>
     </div>
     <div class="stat-cell">
-      <div class="sv" style="color:${rbRate>=60?'var(--red)':rbRate<=25?'var(--green)':'var(--yellow)'}">${rbRate}%</div>
-      <div class="sl">推定RB率</div>
+      <div class="sv" style="color:${regRate>=50?'var(--red)':regRate===0?'var(--green)':'var(--yellow)'}">${regRate}%</div>
+      <div class="sl">REG率</div>
     </div>
     <div class="stat-cell">
-      <div class="sv" style="color:${bigRate>=20?'var(--green)':'var(--muted)'}">${bigRate}%</div>
-      <div class="sl">大役推定率</div>
+      <div class="sv" style="color:${bigHighRate>=30?'var(--green)':'var(--muted)'}">${bigHighRate}%</div>
+      <div class="sl">大役BIG率</div>
     </div>
   `;
 
-  // 総合判定スコア
+  // 総合判定
   let score = 50;
   const pts = [];
 
-  if (oneGCount >= 4)       { score += 25; pts.push(['pos', `1G連 ${oneGCount}回 → 優遇圏の強い証拠`]); }
-  else if (oneGCount >= 2)  { score += 12; pts.push(['pos', `1G連 ${oneGCount}回 → 優遇の兆候あり`]); }
-  else if (oneGCount === 0 && total > 2) { score -= 10; pts.push(['neg', '1G連なし → 優遇ではない可能性']); }
+  if (oneGCount >= 4)      { score += 25; pts.push(['pos', `1G連 ${oneGCount}回 → 優遇圏の強い証拠`]); }
+  else if (oneGCount >= 2) { score += 12; pts.push(['pos', `1G連 ${oneGCount}回 → 優遇の兆候あり`]); }
+  else if (oneGCount === 0 && total > 3) { score -= 10; pts.push(['neg', '1G連なし → 優遇に入っていない可能性']); }
 
-  if (maxChain >= 5)  { score += 20; pts.push(['pos', `最長${maxChain}連チャン → 上位AT圏の実績`]); }
-  else if (maxChain >= 3) { score += 10; pts.push(['pos', `最長${maxChain}連チャン → 優遇挙動確認`]); }
+  if (maxChain >= 6)       { score += 25; pts.push(['pos', `最長${maxChain}連チャン → 上位AT・優遇確定圏`]); }
+  else if (maxChain >= 4)  { score += 15; pts.push(['pos', `最長${maxChain}連チャン → 優遇圏の挙動`]); }
+  else if (maxChain >= 2)  { score += 8;  pts.push(['pos', `最長${maxChain}連チャン → 優遇の兆候`]); }
 
-  if (bigEst >= 2) { score += 20; pts.push(['pos', `大役・エクストラ推定 ${bigEst}回 → 高設定/強優遇`]); }
-  else if (bigEst === 1) { score += 10; pts.push(['pos', '大役推定1回あり → 優遇示唆']); }
+  if (bigHighCount >= 2)   { score += 20; pts.push(['pos', `大役・エクストラ推定 ${bigHighCount}回 → 高設定/優遇強示唆`]); }
+  else if (bigHighCount === 1) { score += 10; pts.push(['pos', '大役推定1回あり → 優遇示唆']); }
 
-  if (rbRate >= 60 && total > 3)      { score -= 20; pts.push(['neg', `推定RB率 ${rbRate}% → RB偏り、冷遇の可能性`]); }
-  else if (rbRate <= 20 && total > 3) { score += 10; pts.push(['pos', `推定RB率 ${rbRate}% → BB中心の良い挙動`]); }
+  if (regRate >= 50 && total > 3)   { score -= 20; pts.push(['neg', `REG率 ${regRate}% → RB偏りは冷遇示唆`]); }
+  else if (regRate === 0 && total > 3) { score += 10; pts.push(['pos', 'REG率0% → BIG中心の良い挙動']); }
 
-  if (hamaCount >= 2) { score -= 15; pts.push(['neg', `ハマり（300G超）${hamaCount}回 → 冷遇期間あり`]); }
+  if (hamaCount >= 2) { score -= 15; pts.push(['neg', `300G超ハマり ${hamaCount}回 → 冷遇期間あり`]); }
   else if (hamaCount === 0 && total > 3) { score += 8; pts.push(['pos', 'ハマりなし → 安定した連チャン台']); }
 
   score = Math.max(0, Math.min(100, score));
 
   let vlabel, vcls, vboxcls;
-  if (score >= 70) { vlabel = '✅ 優遇台の可能性高 → 打ち始め推奨'; vcls = 'go'; vboxcls = 'green'; }
-  else if (score >= 40) { vlabel = '⚠️ 要様子見 / 判断が難しい台'; vcls = 'caution'; vboxcls = 'yellow'; }
-  else { vlabel = '🚫 冷遇台の疑い → 避けること'; vcls = 'stop'; vboxcls = 'red'; }
+  if (score >= 70)      { vlabel = '✅ 優遇台の可能性高 → 打ち始め推奨'; vcls = 'go';      vboxcls = 'green'; }
+  else if (score >= 40) { vlabel = '⚠️ 要様子見 / 判断が難しい台';       vcls = 'caution'; vboxcls = 'yellow'; }
+  else                  { vlabel = '🚫 冷遇台の疑い → 避けること';        vcls = 'stop';    vboxcls = 'red'; }
 
   const vbox = document.getElementById('hreki_verdict_box');
   vbox.className = `result-box show ${vboxcls}`;
   document.getElementById('hreki_verdict').className = `verdict ${vcls}`;
   document.getElementById('hreki_verdict').textContent = vlabel;
   document.getElementById('hreki_verdict_list').innerHTML = pts.map(([t, text]) =>
-    `<li><span class="tag ${t}">${t==='pos'?'優遇+':'冷遇-'}</span><span>${text}</span></li>`
+    `<li><span class="tag ${t}">${t === 'pos' ? '優遇+' : '冷遇-'}</span><span>${text}</span></li>`
   ).join('') || '<li>データが少ないため総合判断できません</li>';
 
   document.getElementById('hreki_result').style.display = 'block';
