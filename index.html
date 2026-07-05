@@ -479,13 +479,14 @@
   <div class="card">
     <div class="card-title">📋 ボーナス履歴を入力</div>
     <div class="cz-unknown-box" style="margin-bottom:14px">
-      <div class="tip">💡 端末の見方（P-TOWN等の形式）</div>
+      <div class="tip">💡 ごん氏の履歴読み基準</div>
       <div class="tip-body">
-        各ボーナス行の<br>
-        ・<strong style="color:var(--text)">G数</strong>（そのボーナスまでの区間G数、前ボーナス後からのG数）<br>
-        ・<strong style="color:var(--text)">差枚数</strong>（そのボーナスの獲得枚数）<br>
-        ・<strong style="color:var(--text)">種別</strong>（BIG または REG）<br>
-        を古い順（B1が上）に入力してください。
+        <strong style="color:var(--text)">ボーナス種別（獲得枚数で自動判定）</strong><br>
+        BIG ≤365枚 → 青7BB ／ 366〜649枚 → 赤7BB ／ 650枚以上 → 完走・エクストラ(虹)<br>
+        <strong style="color:var(--text)">区間G数の読み方</strong><br>
+        G=1 → エンディング後の1G確定連 ／ G=2 → 1G連(2表示) ／ G≤100 → 引き戻し<br>
+        G101〜132 → グレーゾーン ／ G133以上(CZ非経由) → 直撃<br>
+        <strong style="color:var(--text)">入力方法</strong>：各ボーナスを古い順（B1が上）、G数は前ボーナス後からの区間G数を入力
       </div>
     </div>
 
@@ -505,14 +506,15 @@
   <div id="hreki_result" style="display:none">
     <div class="card" style="margin-top:12px">
       <div class="card-title">📊 区間分析テーブル</div>
-      <p style="font-size:11px;color:var(--muted);margin-bottom:8px">「前ボーナス推定」＝直前のボーナス種別（区間G数と差枚変化から算出・目安）</p>
+      <p style="font-size:11px;color:var(--muted);margin-bottom:8px">ごん氏資料の枚数閾値・G数フローチャートで自動判定。有利区間差枚は+2200でEND移行可、+2400で完走圏。</p>
       <table class="itab">
         <thead>
           <tr>
-            <th>区間</th>
-            <th>区間G</th>
-            <th>判定</th>
-            <th>前ボーナス推定</th>
+            <th>B#</th>
+            <th>G数</th>
+            <th>区間判定</th>
+            <th>ボーナス種別</th>
+            <th style="text-align:right">有利区間差枚</th>
           </tr>
         </thead>
         <tbody id="hreki_tbody"></tbody>
@@ -941,120 +943,157 @@ function analyzeHistory() {
     if (!isNaN(gv) && !isNaN(payout)) rows.push({ gv, payout, btype });
   });
 
-  if (rows.length < 2) { alert('ボーナスを2つ以上入力してください'); return; }
+  if (rows.length < 1) { alert('ボーナスを1つ以上入力してください'); return; }
 
-  let oneGCount = 0, maxChain = 0, currentChain = 0;
-  let regCount = 0, bigHighCount = 0, hamaCount = 0;
+  // ごん氏基準: BIG ≤365→青7, 366-649→赤7, ≥650→完走/エクストラ
+  function classifyBonus(btype, payout) {
+    if (btype === 'reg') return { name: 'REG', cls: 'rb-t', rank: 0 };
+    if (payout <= 365)   return { name: '青7 BB', cls: 'blue', rank: 1 };
+    if (payout <= 649)   return { name: '赤7 BB', cls: 'red7', rank: 2 };
+    return { name: '完走 / エクストラ(虹)', cls: 'big', rank: 3 };
+  }
+
+  // ごん氏基準: G=1→END後1G確定, G=2→1G連(2表示), G≤100→引き戻し, G101-132→グレーゾーン, G133+→直撃
+  function classifyInterval(gv, isFirst) {
+    if (isFirst) return { label: '初当たり', cls: 'norm' };
+    if (gv === 1) return { label: '🔥 END→1G確定', cls: 'ichi' };
+    if (gv === 2) return { label: '✨ 1G連(2表示)', cls: 'super' };
+    if (gv <= 100) return { label: `引き戻し(${gv}G)`, cls: 'ren' };
+    if (gv <= 132) return { label: `グレーゾーン(${gv}G)`, cls: 'norm' };
+    if (gv <= 500) return { label: `直撃(${gv}G)`, cls: 'norm' };
+    return { label: `⚠️ ハマり(${gv}G)`, cls: 'hama' };
+  }
+
+  let runningDiff = 0;
+  let oneGCount = 0, endingCount = 0, extraCount = 0, regCount = 0;
+  let maxChain = 0, currentChain = 0, hamaCount = 0;
   const analyzed = [];
 
   for (let i = 0; i < rows.length; i++) {
     const { gv, payout, btype } = rows[i];
-    const isReg = btype === 'reg';
-    const next  = rows[i + 1];
+    const isFirst = (i === 0);
+    const next = rows[i + 1];
 
-    // 区間判定（初ボーナスは前ボーナスからの区間として扱う）
-    let itype, iclass;
-    if (gv <= 1)        { itype = '🔥 1G連';      iclass = 'ichi';  if (i > 0) { oneGCount++; currentChain++; } }
-    else if (gv <= 10)  { itype = '✨ 超連チャン'; iclass = 'super'; currentChain++; }
-    else if (gv <= 80)  { itype = '連チャン';      iclass = 'ren';   currentChain = 0; }
-    else if (gv <= 300) { itype = '通常';           iclass = 'norm';  currentChain = 0; }
-    else                { itype = '⚠️ ハマり';     iclass = 'hama';  currentChain = 0; if (i > 0) hamaCount++; }
-    if (currentChain > maxChain) maxChain = currentChain;
+    // 有利区間差枚 累積: 獲得枚数 - 区間G × 1.65（ごん氏計算式）
+    runningDiff += payout - (gv * 1.65);
+    const diffNow = Math.round(runningDiff);
 
-    // このボーナスの種別推定
-    let bname, bclass, endFlag = '';
-    if (isReg) {
-      bname = 'REG'; bclass = 'rb-t'; regCount++;
-    } else {
-      // 次のボーナスが1G後 → このボーナスはエンディング
-      if (next && next.gv <= 1) {
-        bname = 'エンディング推定'; bclass = 'big'; endFlag = ' ✦次1G確定';
-      } else if (gv === 1 && i > 0) {
-        // 自身が1G連で来た → 大きめのBIG
-        bname = payout >= 700 ? 'エンディング完走' : payout >= 400 ? 'エクストラBB推定' : '連チャンBIG';
-        bclass = payout >= 400 ? 'big' : 'red7';
-        if (payout >= 400) bigHighCount++;
-      } else if (gv === 2 && payout >= 350) {
-        bname = 'エクストラBB推定'; bclass = 'big'; bigHighCount++;
-      } else if (payout >= 450) {
-        bname = 'エクストラBB/END推定'; bclass = 'big'; bigHighCount++;
-      } else if (payout >= 280) {
-        bname = '赤7 BB'; bclass = 'red7';
-      } else {
-        bname = '青7 BB'; bclass = 'blue';
-      }
+    const bonus    = classifyBonus(btype, payout);
+    const interval = classifyInterval(gv, isFirst);
+
+    // 統計カウント
+    if (btype === 'reg') regCount++;
+    if (!isFirst) {
+      if (gv <= 2)   { oneGCount++; currentChain++; }
+      else           { if (currentChain > maxChain) maxChain = currentChain; currentChain = 0; }
+      if (gv > 500) hamaCount++;
     }
 
-    analyzed.push({ i, gv, payout, btype, itype, iclass, bname, bclass, endFlag });
+    // エンディング推定: 次のボーナスが G=1 → このボーナスはエンディング確定
+    let endNote = '';
+    if (next && next.gv === 1) {
+      endNote = '→ END確定';
+      endingCount++;
+      if (bonus.rank >= 2) bonus.name += ' [END]';
+    }
+
+    // エクストラBB判定: G=2 + 獲得≥650枚 (ごん氏: 獲得800枚以上でエクストラ濃厚)
+    let extraNote = '';
+    if (!isFirst && gv === 2 && payout >= 800) {
+      extraNote = '← エクストラBB濃厚';
+      extraCount++;
+    } else if (!isFirst && gv === 2 && payout >= 650) {
+      extraNote = '← エクストラBBの可能性';
+    }
+
+    // 完走チェック
+    let diffAlert = '';
+    if (diffNow >= 2400)      diffAlert = '🎉+2400 完走圏';
+    else if (diffNow >= 2200) diffAlert = '⚡+2200 END移行可';
+    else if (diffNow >= 1826) diffAlert = '💰+1826 切断条件';
+
+    analyzed.push({ i, gv, payout, btype, isFirst, bonus, interval, endNote, extraNote, diffNow, diffAlert });
   }
+  if (currentChain > maxChain) maxChain = currentChain;
+  const finalDiff = Math.round(runningDiff);
 
   // テーブル描画
-  document.getElementById('hreki_tbody').innerHTML = analyzed.map(a => `
+  document.getElementById('hreki_tbody').innerHTML = analyzed.map(a => {
+    const diffColor = a.diffNow >= 1826 ? 'var(--green)' : a.diffNow < 0 ? 'var(--accent2)' : 'var(--text)';
+    const note = a.extraNote || a.endNote;
+    return `
     <tr>
-      <td style="color:var(--muted);font-size:11px;font-weight:700">B${a.i + 1}</td>
+      <td style="color:var(--muted);font-size:11px;font-weight:700">B${a.i+1}</td>
       <td style="font-weight:700">${a.gv}G</td>
-      <td>${a.i === 0 && a.gv > 10
-            ? `<span class="ibadge norm">初当たり</span>`
-            : `<span class="ibadge ${a.iclass}">${a.itype}</span>`}</td>
+      <td><span class="ibadge ${a.interval.cls}">${a.interval.label}</span></td>
       <td>
-        <span class="bname ${a.bclass}">${a.bname}${a.endFlag}</span><br>
+        <span class="bname ${a.bonus.cls}">${a.bonus.name}</span><br>
         <span style="font-size:10px;color:var(--muted)">+${a.payout}枚</span>
+        ${note ? `<br><span style="font-size:10px;color:var(--accent)">${note}</span>` : ''}
       </td>
-    </tr>
-  `).join('');
+      <td style="text-align:right;font-weight:700;font-size:12px;color:${diffColor}">
+        ${a.diffNow > 0 ? '+' : ''}${a.diffNow}<br>
+        <span style="font-size:10px;font-weight:700;color:var(--green)">${a.diffAlert}</span>
+      </td>
+    </tr>`;
+  }).join('');
 
   // 統計サマリー
-  const total  = rows.length;
+  const total   = rows.length;
   const regRate = Math.round(regCount / total * 100);
-  const bigHighRate = (total - regCount) > 0
-    ? Math.round(bigHighCount / (total - regCount) * 100) : 0;
 
   document.getElementById('hreki_stats').innerHTML = `
     <div class="stat-cell">
       <div class="sv" style="color:${oneGCount>=4?'var(--green)':oneGCount>=2?'var(--yellow)':'var(--muted)'}">${oneGCount}</div>
-      <div class="sl">1G連回数</div>
+      <div class="sl">1G連(G≤2)回数</div>
     </div>
     <div class="stat-cell">
       <div class="sv" style="color:${maxChain>=5?'var(--green)':maxChain>=3?'var(--yellow)':'var(--muted)'}">${maxChain}</div>
-      <div class="sl">最長連チャン数</div>
+      <div class="sl">最長連チャン</div>
     </div>
     <div class="stat-cell">
-      <div class="sv" style="color:${regRate>=50?'var(--red)':regRate===0?'var(--green)':'var(--yellow)'}">${regRate}%</div>
-      <div class="sl">REG率</div>
+      <div class="sv" style="color:${endingCount>=1?'var(--green)':'var(--muted)'}">${endingCount}</div>
+      <div class="sl">エンディング確認数</div>
     </div>
     <div class="stat-cell">
-      <div class="sv" style="color:${bigHighRate>=30?'var(--green)':'var(--muted)'}">${bigHighRate}%</div>
-      <div class="sl">大役BIG率</div>
+      <div class="sv" style="font-size:${Math.abs(finalDiff)>=1000?'18px':'26px'};color:${finalDiff>=1826?'var(--green)':finalDiff<0?'var(--accent2)':'var(--text)'}">${finalDiff>0?'+':''}${finalDiff}</div>
+      <div class="sl">有利区間 累計差枚</div>
     </div>
   `;
 
-  // 総合判定
+  // 総合判定（ごん氏基準）
   let score = 50;
   const pts = [];
 
-  if (oneGCount >= 4)      { score += 25; pts.push(['pos', `1G連 ${oneGCount}回 → 優遇圏の強い証拠`]); }
-  else if (oneGCount >= 2) { score += 12; pts.push(['pos', `1G連 ${oneGCount}回 → 優遇の兆候あり`]); }
-  else if (oneGCount === 0 && total > 3) { score -= 10; pts.push(['neg', '1G連なし → 優遇に入っていない可能性']); }
+  if (oneGCount >= 5)      { score += 30; pts.push(['pos', `1G連 ${oneGCount}回 → 優遇確定圏（G=2含む連チャン多数）`]); }
+  else if (oneGCount >= 3) { score += 18; pts.push(['pos', `1G連 ${oneGCount}回 → 優遇の強い兆候`]); }
+  else if (oneGCount >= 1) { score += 8;  pts.push(['pos', `1G連 ${oneGCount}回 → 優遇の兆候あり`]); }
+  else if (total > 3)      { score -= 10; pts.push(['neg', '1G連なし → 優遇に入っていない可能性']); }
 
   if (maxChain >= 6)       { score += 25; pts.push(['pos', `最長${maxChain}連チャン → 上位AT・優遇確定圏`]); }
   else if (maxChain >= 4)  { score += 15; pts.push(['pos', `最長${maxChain}連チャン → 優遇圏の挙動`]); }
   else if (maxChain >= 2)  { score += 8;  pts.push(['pos', `最長${maxChain}連チャン → 優遇の兆候`]); }
 
-  if (bigHighCount >= 2)   { score += 20; pts.push(['pos', `大役・エクストラ推定 ${bigHighCount}回 → 高設定/優遇強示唆`]); }
-  else if (bigHighCount === 1) { score += 10; pts.push(['pos', '大役推定1回あり → 優遇示唆']); }
+  if (endingCount >= 2)    { score += 25; pts.push(['pos', `エンディング ${endingCount}回確認 → 完走経験台・優遇・高設定濃厚`]); }
+  else if (endingCount === 1) { score += 15; pts.push(['pos', 'エンディング1回確認 → 完走経験・優遇示唆']); }
 
-  if (regRate >= 50 && total > 3)   { score -= 20; pts.push(['neg', `REG率 ${regRate}% → RB偏りは冷遇示唆`]); }
-  else if (regRate === 0 && total > 3) { score += 10; pts.push(['pos', 'REG率0% → BIG中心の良い挙動']); }
+  if (extraCount >= 1)     { score += 15; pts.push(['pos', `エクストラBB ${extraCount}回推定 → 高設定示唆`]); }
 
-  if (hamaCount >= 2) { score -= 15; pts.push(['neg', `300G超ハマり ${hamaCount}回 → 冷遇期間あり`]); }
-  else if (hamaCount === 0 && total > 3) { score += 8; pts.push(['pos', 'ハマりなし → 安定した連チャン台']); }
+  if (regRate >= 50 && total > 3)       { score -= 20; pts.push(['neg', `REG率 ${regRate}% → REG偏りは低設定/冷遇示唆（ごん氏：REGが多い=青7多=冷遇）`]); }
+  else if (regRate === 0 && total > 3)  { score += 10; pts.push(['pos', 'REG率0% → BIG中心の良い挙動']); }
+
+  if (hamaCount >= 2)      { score -= 15; pts.push(['neg', `ハマり ${hamaCount}回 → 冷遇期間あり`]); }
+  else if (hamaCount === 0 && total > 3) { score += 8; pts.push(['pos', 'ハマりなし → 安定した引き']); }
+
+  if (finalDiff >= 2200)   { score += 10; pts.push(['pos', `有利区間差枚+${finalDiff}枚 → エンディング移行ライン到達`]); }
+  else if (finalDiff >= 1826) { score += 5; pts.push(['pos', `有利区間差枚+${finalDiff}枚 → 切断条件ライン`]); }
 
   score = Math.max(0, Math.min(100, score));
 
   let vlabel, vcls, vboxcls;
-  if (score >= 70)      { vlabel = '✅ 優遇台の可能性高 → 打ち始め推奨'; vcls = 'go';      vboxcls = 'green'; }
-  else if (score >= 40) { vlabel = '⚠️ 要様子見 / 判断が難しい台';       vcls = 'caution'; vboxcls = 'yellow'; }
-  else                  { vlabel = '🚫 冷遇台の疑い → 避けること';        vcls = 'stop';    vboxcls = 'red'; }
+  if (score >= 70)      { vlabel = '✅ 優遇台・高設定の可能性高'; vcls = 'go';      vboxcls = 'green'; }
+  else if (score >= 40) { vlabel = '⚠️ 要様子見 / 判断難しい台';  vcls = 'caution'; vboxcls = 'yellow'; }
+  else                  { vlabel = '🚫 冷遇・低設定の疑い強い台';  vcls = 'stop';    vboxcls = 'red'; }
 
   const vbox = document.getElementById('hreki_verdict_box');
   vbox.className = `result-box show ${vboxcls}`;
@@ -1062,7 +1101,7 @@ function analyzeHistory() {
   document.getElementById('hreki_verdict').textContent = vlabel;
   document.getElementById('hreki_verdict_list').innerHTML = pts.map(([t, text]) =>
     `<li><span class="tag ${t}">${t === 'pos' ? '優遇+' : '冷遇-'}</span><span>${text}</span></li>`
-  ).join('') || '<li>データが少ないため総合判断できません</li>';
+  ).join('') || '<li>データが少ないため判断できません</li>';
 
   document.getElementById('hreki_result').style.display = 'block';
   document.getElementById('hreki_result').scrollIntoView({ behavior: 'smooth', block: 'start' });
