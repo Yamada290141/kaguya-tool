@@ -240,11 +240,11 @@
       <option value="5plus">5連以上（上位AT）</option>
     </select>
 
-    <label>RBが連続しているか</label>
+    <label>直前ボーナスがRBか（ごん氏マイルール⑧）</label>
     <select id="t0_rb_streak">
-      <option value="no">いいえ</option>
-      <option value="2">RB2連続</option>
-      <option value="3plus">RB3連続以上</option>
+      <option value="no">直前はBB（問題なし）</option>
+      <option value="2">直前がRBだった（マイルール⑧：×）</option>
+      <option value="3plus">RBが2回以上続いた（より強い冷遇示唆）</option>
     </select>
 
     <label>マリアージュ後の展開（あれば）</label>
@@ -439,7 +439,7 @@
     <div class="card-title">⛔ 絶対に避けるべき状況</div>
     <ul class="reason-list">
       <li><span class="tag neg">冷遇</span> CZ 3回以上連続失敗</li>
-      <li><span class="tag neg">冷遇</span> RB が 3連続以上</li>
+      <li><span class="tag neg">冷遇</span> 直前ボーナスがRB（ごん氏マイルール⑧：直前RBなら×）</li>
       <li><span class="tag neg">冷遇</span> CZ1G目アイキャッチが白</li>
       <li><span class="tag neg">冷遇</span> マリアージュ後に赤7単発（引き戻しなし）</li>
       <li><span class="tag neg">冷遇</span> 1G連が全く発生しない or 最大2連止まり</li>
@@ -672,8 +672,8 @@ function judgeTable() {
   else if (czFail === 1) { score -= 5; reasons.push(['neu','CZ 1回失敗 → やや注意']); }
   else if (czFail === 0 && g1con !== '') { score += 5; reasons.push(['pos','CZ連続失敗なし → 良好']); }
 
-  if (rbStreak === '3plus') { score -= 20; reasons.push(['neg','RB 3連続以上 → 冷遇確定示唆。RBRBRB地獄']); }
-  else if (rbStreak === '2') { score -= 10; reasons.push(['neg','RB 2連続 → 冷遇の可能性高']); }
+  if (rbStreak === '3plus') { score -= 20; reasons.push(['neg','直前RB（複数連続）→ ごん氏マイルール⑧「直前RBなら×」。続行は非推奨。']); }
+  else if (rbStreak === '2') { score -= 10; reasons.push(['neg','直前RBあり → ごん氏マイルール⑧「直前RBなら×」。冷遇の可能性。']); }
 
   // 有利区間差枚での判断
   if (samai >= 1250 && samai < 1850) { score += 12; reasons.push(['pos',`差枚+${samai}枚 → 有利切断狙い圏内（切断目安+1826枚）`]); }
