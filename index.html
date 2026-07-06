@@ -502,9 +502,38 @@
     <button class="add-btn" onclick="addHrekiRow()">＋ ボーナスを追加</button>
   </div>
 
+  <div class="card" style="margin-top:12px;border:1px solid rgba(155,89,182,.4)">
+    <div class="card-title">📍 現在の状況（任意・入力で判断精度UP）</div>
+    <p style="font-size:11px;color:var(--muted);margin-bottom:10px">最終ボーナス後の現在G数を入れると、現在地判定・リアルタイム差枚・続行/やめ判断が追加されます。</p>
+    <div style="display:grid;gap:10px">
+      <div>
+        <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">最終ボーナス後 現在G数</label>
+        <input type="number" id="hreki_current_g" placeholder="例: 45（未入力ならスキップ）" min="0" style="width:100%;padding:10px 12px;background:var(--input-bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px">
+      </div>
+      <div>
+        <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">現有利区間内のCZ試行回数（任意）</label>
+        <input type="number" id="hreki_current_cz" placeholder="例: 2（差枚計算に使用）" min="0" style="width:100%;padding:10px 12px;background:var(--input-bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px">
+      </div>
+      <div>
+        <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">直近マリアージュ後の展開（任意）</label>
+        <select id="hreki_marriage_result" style="width:100%;padding:10px 12px;background:var(--input-bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px">
+          <option value="unknown">不明 / まだ</option>
+          <option value="bb2plus">BB 2連以上で続いた（良い兆候）</option>
+          <option value="bb1">BB 単発止まり</option>
+          <option value="red7_1">赤7 単発終了（冷遇サイン⚠️）</option>
+          <option value="rb">RB で終了（冷遇サイン⚠️）</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
   <button class="btn" onclick="analyzeHistory()">🔍 履歴を解析する</button>
 
   <div id="hreki_result" style="display:none">
+    <div class="card" id="hreki_action_card" style="margin-top:12px;border:1px solid rgba(155,89,182,.5);display:none">
+      <div class="card-title">🎮 総合行動判断</div>
+      <div id="hreki_action_content"></div>
+    </div>
     <div class="card" style="margin-top:12px">
       <div class="card-title">📊 区間分析テーブル</div>
       <p style="font-size:11px;color:var(--muted);margin-bottom:8px">ごん氏資料の枚数閾値・G数フローチャートで自動判定。有利区間差枚は+2200でEND移行可、+2400で完走圏。</p>
@@ -1325,6 +1354,134 @@ function analyzeHistory() {
   document.getElementById('hreki_verdict_list').innerHTML = pts.map(([t, text]) =>
     `<li><span class="tag ${t}">${t==='pos'?'優遇+':'冷遇-'}</span><span>${text}</span></li>`
   ).join('') || '<li>データが少ないため判断できません</li>';
+
+  // ─── 総合行動判断 ───
+  // 現在G数が入力されていれば現在地判定・リアルタイム差枚・続行/やめを総合判断
+  const currentGVal  = parseInt(document.getElementById('hreki_current_g').value);
+  const currentCZVal = parseInt(document.getElementById('hreki_current_cz').value) || 0;
+  const marriageResult = document.getElementById('hreki_marriage_result').value;
+  const hasCurrentG  = !isNaN(currentGVal) && currentGVal >= 0;
+
+  const actionCard    = document.getElementById('hreki_action_card');
+  const actionContent = document.getElementById('hreki_action_content');
+
+  if (hasCurrentG) {
+    actionCard.style.display = 'block';
+
+    // 現在差枚: 履歴累計差枚 − 現在G×1.65 − 現在CZ×18.8 (ごん氏算出係数)
+    const currentDiff = Math.round(finalDiff - currentGVal * 1.65 - currentCZVal * 18.8);
+    const realToCut   = Math.max(0, nextCutTarget - currentDiff);
+
+    // 現在地判定（ごん氏フローチャート: G≤100=引き戻しゾーン, 101-132=グレーゾーン, 133+=直撃）
+    let zoneLabel, zoneClass, zoneAdvice;
+    if (currentGVal <= 2) {
+      zoneLabel  = `1G連圏（${currentGVal}G）`;
+      zoneClass  = 'super';
+      zoneAdvice = '絶対にやめるな。1G連の可能性。引き戻しゾーン最高レベル。';
+    } else if (currentGVal <= 5) {
+      zoneLabel  = `引き戻しゾーン（${currentGVal}G）`;
+      zoneClass  = 'ren';
+      zoneAdvice = '引き戻しゾーン内。続行一択。';
+    } else if (currentGVal <= 100) {
+      zoneLabel  = `引き戻しゾーン（${currentGVal}G）激アツ`;
+      zoneClass  = 'fire';
+      zoneAdvice = `G6〜100は引き戻しゾーン内の激アツ範囲（ごん氏: 6G以降=激アツ）。当たれば強い優遇示唆。続行価値あり。`;
+    } else if (currentGVal <= 132) {
+      zoneLabel  = `グレーゾーン（${currentGVal}G）`;
+      zoneClass  = 'norm';
+      zoneAdvice = 'G101〜132はグレーゾーン。引き戻しか直撃か判断難しい。差枚・履歴で総合判断。';
+    } else if (currentGVal <= 500) {
+      zoneLabel  = `直撃ゾーン（${currentGVal}G）`;
+      zoneClass  = 'norm';
+      zoneAdvice = `G133以上はCZ経由なし直撃確定（設定判別に重要）。ごん氏: 直撃は設定差あり。`;
+    } else {
+      zoneLabel  = `ハマり警戒（${currentGVal}G）`;
+      zoneClass  = 'hama';
+      zoneAdvice = 'G500超のハマり。有利区間差枚・優遇兆候がなければやめを検討。';
+    }
+
+    // マリアージュ後展開（スランプグラフPDF: 赤7単発/RB終了→冷遇代表的サイン）
+    let marriageNote = '', marriagePenalty = 0;
+    if (marriageResult === 'red7_1') {
+      marriageNote    = '⚠️ マリアージュ後 赤7単発終了 → ごん氏「冷遇移行の代表的なサイン」。引き戻しゾーン内でも慎重判断を推奨。';
+      marriagePenalty = -30;
+    } else if (marriageResult === 'rb') {
+      marriageNote    = '⚠️ マリアージュ後 RB終了 → 冷遇サイン。ごん氏マイルール⑧「直前RBなら×」。やめ強推奨。';
+      marriagePenalty = -35;
+    } else if (marriageResult === 'bb1') {
+      marriageNote    = '△ マリアージュ後 BB単発止まり → やや冷遇寄りだが確定ではない。ごん氏マイルール⑧「単発なら△」。';
+      marriagePenalty = -10;
+    } else if (marriageResult === 'bb2plus') {
+      marriageNote    = '✅ マリアージュ後 BB2連以上 → 優遇示唆あり。ごん氏マイルール⑧「BBなら2連以上でOK」。続行推奨。';
+      marriagePenalty = 10;
+    }
+
+    // 切断接近アラート
+    let cutNote = '', cutBonus = 0;
+    if (realToCut <= 200 && realToCut > 0) {
+      cutNote  = `🔥 有利区間切断まであと+${realToCut}枚！赤7確定+80%ループの切断恩恵が目前。絶対離席禁止！`;
+      cutBonus = 40;
+    } else if (realToCut <= 500 && realToCut > 0) {
+      cutNote  = `💰 有利区間切断まであと+${realToCut}枚。切断狙いとして最優先台。ごん氏立ち回り優先度2位。`;
+      cutBonus = 20;
+    } else if (realToCut <= 900 && realToCut > 0) {
+      cutNote  = `有利区間切断まであと+${realToCut}枚。切断圏に接近中。`;
+      cutBonus = 8;
+    }
+
+    // 総合アクションスコア（履歴スコア + 現在地補正）
+    let actionScore = score + marriagePenalty + cutBonus;
+    if (currentGVal <= 100) actionScore += 18; // 引き戻しゾーン内は続行ボーナス
+    actionScore = Math.max(0, Math.min(100, actionScore));
+
+    let actionLabel, actionCls, actionBg;
+    if (currentGVal <= 100 && (marriageResult === 'red7_1' || marriageResult === 'rb')) {
+      // 引き戻しゾーン内でも冷遇サインあり → 慎重
+      actionLabel = '⚠️ 冷遇サイン確認 → 当たれば様子見、なければ早めに撤退';
+      actionCls = 'caution'; actionBg = 'rgba(243,156,18,.15)';
+    } else if (actionScore >= 65 || (currentGVal <= 100 && marriagePenalty >= 0)) {
+      actionLabel = '✅ 続行推奨 → 期待値あり';
+      actionCls = 'go'; actionBg = 'rgba(46,204,113,.15)';
+    } else if (actionScore >= 35) {
+      actionLabel = '⚠️ 要判断（様子見）→ 冷遇示唆なければ続行、あれば即やめ';
+      actionCls = 'caution'; actionBg = 'rgba(243,156,18,.15)';
+    } else {
+      actionLabel = '🚫 やめ推奨 → 冷遇・低設定の疑い大';
+      actionCls = 'stop'; actionBg = 'rgba(231,76,60,.15)';
+    }
+
+    actionContent.innerHTML = `
+      <div style="display:grid;gap:8px">
+        <div class="info-row">
+          <span>現在地</span>
+          <span class="info-val"><span class="ibadge ${zoneClass}">${zoneLabel}</span></span>
+        </div>
+        <div class="info-row">
+          <span>現在の有利区間差枚</span>
+          <span class="info-val" style="color:${currentDiff>=1826?'var(--green)':currentDiff<0?'var(--accent2)':'var(--text)'}">
+            ${currentDiff>0?'+':''}${currentDiff}枚
+            ${currentDiff>=2200?'<span style="font-size:10px;color:var(--green)"> ⚡END移行可</span>':''}
+            ${currentDiff>=1826&&currentDiff<2200?'<span style="font-size:10px;color:var(--green)"> 💰切断条件到達</span>':''}
+          </span>
+        </div>
+        <div class="info-row">
+          <span>次回切断まで（現在G含む正確値）</span>
+          <span class="info-val" style="color:${realToCut<=300?'var(--green)':realToCut<=700?'var(--yellow)':'var(--text)'}">
+            ${realToCut>0?'+'+realToCut+'枚':'🎉 切断条件達成！'}
+          </span>
+        </div>
+        <div style="padding:7px 10px;background:rgba(255,255,255,.04);border-radius:6px;font-size:11px;color:var(--muted)">${zoneAdvice}</div>
+        ${marriageNote?`<div style="padding:7px 10px;background:rgba(255,255,255,.05);border-radius:6px;font-size:11px">${marriageNote}</div>`:''}
+        ${cutNote?`<div style="padding:8px 10px;background:rgba(46,204,113,.1);border-radius:6px;font-size:12px;color:var(--green);font-weight:700">${cutNote}</div>`:''}
+        <div style="margin-top:4px;padding:13px;background:${actionBg};border-radius:8px;text-align:center;font-size:17px;font-weight:800;color:var(--text)">
+          ${actionLabel}
+        </div>
+        <div style="font-size:10px;color:var(--muted)">※ごん氏立ち回り優先度: ①優遇台 ②有利区間差枚狙い ③ヤケクソモード台 ④高設定台</div>
+      </div>
+    `;
+  } else {
+    actionCard.style.display = 'none';
+  }
 
   document.getElementById('hreki_result').style.display = 'block';
   document.getElementById('hreki_result').scrollIntoView({ behavior: 'smooth', block: 'start' });
