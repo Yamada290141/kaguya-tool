@@ -575,6 +575,10 @@
       <div class="card-title">🔍 冷遇/優遇シグナルチェック</div>
       <div id="hreki_signal_content"><span style="font-size:12px;color:var(--muted)">解析後に表示されます</span></div>
     </div>
+    <div class="card" style="margin-top:12px;border:1px solid rgba(100,149,237,.3)">
+      <div class="card-title">📈 直近5回 傾向チェック</div>
+      <div id="hreki_recent5_content"><span style="font-size:12px;color:var(--muted)">解析後に表示されます</span></div>
+    </div>
     <div class="card" style="margin-top:12px">
       <div class="card-title">📊 区間分析テーブル</div>
       <p style="font-size:11px;color:var(--muted);margin-bottom:8px">ごん氏資料の枚数閾値・G数フローチャートで自動判定。有利区間差枚は+2200でEND移行可、+2400で完走圏。</p>
@@ -1483,6 +1487,116 @@ function analyzeHistory() {
       <div>
         <div style="font-size:11px;font-weight:700;color:var(--green);margin-bottom:5px">✨ 優遇シグナル（${hotSignals.length}個該当）</div>
         ${hotHtml}
+      </div>`;
+  }
+
+  // ─── 直近5回 傾向チェック ───
+  const r5el = document.getElementById('hreki_recent5_content');
+  if (r5el) {
+    const recent5 = analyzed.slice(-5);
+    const r5len   = recent5.length;
+    const r5BB    = recent5.filter(e => e.btype === 'big').length;
+    const r5RB    = recent5.filter(e => e.btype === 'reg').length;
+    const r5oneG  = recent5.filter(e => !e.isFirst && e.gv <= 2).length;
+    const r5maxChain = Math.max(...recent5.map(e => e.chainNum), 0);
+    const r5extra = recent5.filter(e => e.extraNote && e.extraNote.includes('濃厚')).length;
+    const r5red7  = recent5.filter(e => e.btype === 'big' && e.payout >= 366 && e.payout <= 649).length;
+    const r5rainbow = recent5.filter(e => e.btype === 'big' && e.payout >= 650).length;
+
+    // 差枚トレンド（直近5回の最初と最後を比較）
+    const r5startDiff = recent5[0].diffNow;
+    const r5endDiff   = recent5[r5len - 1].diffNow;
+    const r5trend     = r5endDiff - r5startDiff;
+
+    // 直近5回シグナル（全体と独立判定）
+    const r5Cold = [], r5Hot = [];
+    if (r5oneG === 0 && r5len >= 3)            r5Cold.push('1G連ゼロ');
+    if (r5RB >= 3)                             r5Cold.push(`REG ${r5RB}回（多すぎ）`);
+    if (r5red7 === 0 && r5rainbow === 0 && r5BB >= 3) r5Cold.push('青7BBのみ（高品質ボーナスなし）');
+    if (r5trend < -400)                        r5Cold.push(`差枚 ${r5trend}枚悪化`);
+    const r5directHits = recent5.filter(e => e.isFirst || e.gv > 132);
+    const r5altBBRB = (() => {
+      if (r5directHits.length < 3) return false;
+      let tr = 0;
+      for (let i = 1; i < r5directHits.length; i++) {
+        if (r5directHits[i].btype !== r5directHits[i-1].btype) tr++;
+      }
+      return tr >= 2;
+    })();
+    if (r5altBBRB) r5Cold.push('BB→RB→BB繰り返し（直近）');
+
+    if (r5oneG >= 2)          r5Hot.push(`1G連 ${r5oneG}回`);
+    if (r5maxChain >= 3)      r5Hot.push(`最大 ${r5maxChain}連到達`);
+    if (r5red7 >= 1)          r5Hot.push(`赤7BB ${r5red7}回`);
+    if (r5rainbow >= 1)       r5Hot.push(`完走/エクストラ ${r5rainbow}回`);
+    if (r5extra >= 1)         r5Hot.push(`エクストラBB ${r5extra}回（確定）`);
+    if (r5trend > 400)        r5Hot.push(`差枚 +${r5trend}枚改善`);
+
+    // 直近 vs 全体のギャップ
+    const overallOneGRate = rows.length > 1 ? (oneGCount / (rows.length - 1) * 100).toFixed(0) : 0;
+    const r5oneGRate      = r5len > 1 ? (r5oneG / (r5len - 1) * 100).toFixed(0) : 0;
+    const gapNote = r5len >= 4 && rows.length > r5len ? (() => {
+      if (r5oneG === 0 && oneGCount > 0)
+        return `⚠ 直近5回は1G連なし（全体では${oneGCount}回あり）→ 最近冷えてきた可能性`;
+      if (r5RB > r5BB && regCount <= Math.floor(rows.length / 2))
+        return `⚠ 直近でREG比率上昇（全体は${regCount}/${rows.length}）→ 傾向悪化の可能性`;
+      if (r5trend > 300 && finalDiff < 0)
+        return `✅ 全体差枚はマイナスだが直近は改善中（+${r5trend}枚）→ 回復兆候`;
+      return '';
+    })() : '';
+
+    // トレンド判定
+    let trendLabel, trendColor;
+    if (r5Cold.length >= 3 || (r5Cold.length >= 2 && r5trend < -300)) {
+      trendLabel = '🚨 冷遇傾向（直近は明らかに悪い）'; trendColor = 'var(--accent2)';
+    } else if (r5Hot.length >= 3 || (r5Hot.length >= 2 && r5trend > 300)) {
+      trendLabel = '✅ 優遇傾向（直近は好調）'; trendColor = 'var(--green)';
+    } else if (r5Cold.length > r5Hot.length) {
+      trendLabel = '⚠ やや冷え気味'; trendColor = 'var(--yellow)';
+    } else if (r5Hot.length > r5Cold.length) {
+      trendLabel = '⚠ やや好転中'; trendColor = 'var(--yellow)';
+    } else {
+      trendLabel = '— 判断難しい（横ばい）'; trendColor = 'var(--muted)';
+    }
+
+    const mkTag = (txt, isCold) => {
+      const bg = isCold ? 'rgba(231,76,60,.15)' : 'rgba(46,204,113,.15)';
+      const col = isCold ? 'var(--accent2)' : 'var(--green)';
+      return `<span style="display:inline-block;padding:2px 7px;background:${bg};color:${col};border-radius:4px;font-size:11px;margin:2px">${txt}</span>`;
+    };
+
+    r5el.innerHTML = `
+      <div style="display:grid;gap:8px">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;text-align:center">
+          <div style="background:rgba(255,255,255,.05);border-radius:6px;padding:6px 4px">
+            <div style="font-size:18px;font-weight:800;color:${r5BB>r5RB?'var(--green)':'var(--muted)'}">${r5BB}</div>
+            <div style="font-size:10px;color:var(--muted)">BIG</div>
+          </div>
+          <div style="background:rgba(255,255,255,.05);border-radius:6px;padding:6px 4px">
+            <div style="font-size:18px;font-weight:800;color:${r5RB>=3?'var(--accent2)':'var(--muted)'}">${r5RB}</div>
+            <div style="font-size:10px;color:var(--muted)">REG</div>
+          </div>
+          <div style="background:rgba(255,255,255,.05);border-radius:6px;padding:6px 4px">
+            <div style="font-size:18px;font-weight:800;color:${r5oneG>=2?'var(--green)':r5oneG===0?'var(--accent2)':'var(--muted)'}">${r5oneG}</div>
+            <div style="font-size:10px;color:var(--muted)">1G連</div>
+          </div>
+          <div style="background:rgba(255,255,255,.05);border-radius:6px;padding:6px 4px">
+            <div style="font-size:18px;font-weight:800;color:${r5maxChain>=3?'var(--green)':'var(--muted)'}">${r5maxChain}連</div>
+            <div style="font-size:10px;color:var(--muted)">最大</div>
+          </div>
+        </div>
+        <div class="info-row">
+          <span>差枚トレンド（直近${r5len}回）</span>
+          <span class="info-val" style="color:${r5trend>0?'var(--green)':r5trend<-300?'var(--accent2)':'var(--muted)'}">
+            ${r5trend>0?'+':''}${r5trend}枚 ${r5trend>300?'▲改善':r5trend<-300?'▼悪化':'→横ばい'}
+          </span>
+        </div>
+        ${r5Cold.length || r5Hot.length ? `<div style="line-height:1.8">${r5Cold.map(t=>mkTag(t,true)).join('')}${r5Hot.map(t=>mkTag(t,false)).join('')}</div>` : ''}
+        ${gapNote ? `<div style="padding:6px 10px;background:rgba(255,255,255,.05);border-radius:6px;font-size:11px">${gapNote}</div>` : ''}
+        <div style="padding:10px;background:rgba(100,149,237,.1);border-radius:7px;text-align:center;font-size:14px;font-weight:700;color:${trendColor}">
+          ${trendLabel}
+        </div>
+        ${r5len < 5 ? `<div style="font-size:10px;color:var(--muted)">※ 履歴が${r5len}回のため直近${r5len}回で分析</div>` : ''}
       </div>`;
   }
 
