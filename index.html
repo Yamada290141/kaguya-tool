@@ -524,6 +524,18 @@
           <option value="rb">RB で終了（冷遇サイン⚠️）</option>
         </select>
       </div>
+      <div>
+        <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">現有利区間内のチャンス目回数（任意）</label>
+        <input type="number" id="hreki_chance_count" placeholder="例: 5（RB/BB単発やめ判定に使用）" min="0" style="width:100%;padding:10px 12px;background:var(--input-bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px">
+      </div>
+      <div>
+        <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">時間帯（任意）</label>
+        <select id="hreki_time_zone" style="width:100%;padding:10px 12px;background:var(--input-bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px">
+          <option value="unknown">不明</option>
+          <option value="daytime">朝〜昼（昼ステージ）</option>
+          <option value="evening">夕方以降</option>
+        </select>
+      </div>
     </div>
   </div>
 
@@ -1355,11 +1367,30 @@ function analyzeHistory() {
     `<li><span class="tag ${t}">${t==='pos'?'優遇+':'冷遇-'}</span><span>${text}</span></li>`
   ).join('') || '<li>データが少ないため判断できません</li>';
 
+  // ─── 直近連チャン分析 ───
+  let chainStartIdx = 0;
+  for (let i = analyzed.length - 1; i >= 0; i--) {
+    if (analyzed[i].isFirst || analyzed[i].gv > 132) { chainStartIdx = i; break; }
+  }
+  const recentChainEntries = analyzed.slice(chainStartIdx);
+  const recentBBCount      = recentChainEntries.filter(e => e.btype === 'big').length;
+  const recentOneGCount    = recentChainEntries.filter(e => !e.isFirst && e.gv <= 2).length;
+  const recentChainPayout  = recentChainEntries.reduce((s, e) => s + e.payout, 0);
+  const totalG             = rows.reduce((s, r) => s + r.gv, 0);
+  const lastAn             = analyzed[analyzed.length - 1];
+  const prevAn             = analyzed.length >= 2 ? analyzed[analyzed.length - 2] : null;
+  const lastIsRB           = lastAn.btype === 'reg';
+  const lastIsHikimodoshiBB = lastAn.btype === 'big' && !lastAn.isFirst && lastAn.gv <= 100;
+  const isRBthenHikiBB     = !!(prevAn && prevAn.btype === 'reg' && lastIsHikimodoshiBB);
+
   // ─── 総合行動判断 ───
   // 現在G数が入力されていれば現在地判定・リアルタイム差枚・続行/やめを総合判断
   const currentGVal  = parseInt(document.getElementById('hreki_current_g').value);
   const currentCZVal = parseInt(document.getElementById('hreki_current_cz').value) || 0;
-  const marriageResult = document.getElementById('hreki_marriage_result').value;
+  const marriageResult  = document.getElementById('hreki_marriage_result').value;
+  const chanceCount     = parseInt(document.getElementById('hreki_chance_count').value);
+  const hasChanceCount  = !isNaN(chanceCount) && chanceCount >= 0;
+  const timeZone        = document.getElementById('hreki_time_zone').value;
   const hasCurrentG  = !isNaN(currentGVal) && currentGVal >= 0;
 
   const actionCard    = document.getElementById('hreki_action_card');
@@ -1429,14 +1460,90 @@ function analyzeHistory() {
       cutBonus = 8;
     }
 
+    // ─── 直近連チャンパターン判定（ごん氏やめ時フロー）───
+    let patternType = 'none', patternAdvice = '', patternBg = '', patternForceStop = false;
+    if (isRBthenHikiBB && recentOneGCount === 0) {
+      patternType = 'rb_hiki_no1g';
+      patternAdvice = '🚫 RB→引き戻しBB→1G連獲得なし → ごん氏：即やめ（1Gでやめ）。再引き戻しはほぼしない。';
+      patternBg = 'rgba(231,76,60,.18)'; patternForceStop = true;
+    } else if (lastIsHikimodoshiBB && recentOneGCount === 0) {
+      patternType = 'hiki_no1g';
+      patternAdvice = '🚫 引き戻しBBで1G連取れず終了 → ごん氏：「再引き戻しかなりの高確率でなし」→ 即やめ推奨。';
+      patternBg = 'rgba(231,76,60,.18)'; patternForceStop = true;
+    } else if (lastIsRB && recentChainEntries.length === 1) {
+      patternType = 'rb_single';
+      if (currentGVal >= 130) {
+        patternAdvice = '🚫 RB単発 + 130G超え → やめ推奨。';
+        patternBg = 'rgba(231,76,60,.15)'; patternForceStop = true;
+      } else {
+        patternAdvice = '⚠️ RB単発 → 基本130Gゾーン確認やめ。'
+          + (hasChanceCount && chanceCount <= 9 && timeZone !== 'evening'
+              ? ' チャ目9以下・昼ステージ → 100辞めも選択肢。' : '');
+        patternBg = 'rgba(243,156,18,.15)';
+      }
+    } else if (recentBBCount >= 4) {
+      patternType = 'bb4plus';
+      if (recentChainPayout > 1000 && finalDiff < 1250) {
+        patternAdvice = `🚫 BB4連以上・総獲得${recentChainPayout}枚超え + 差枚+${finalDiff}枚（+1250未満）→ 基本やめ。連抜け後は冷遇移行が多い。`;
+        patternBg = 'rgba(231,76,60,.15)'; patternForceStop = true;
+      } else if (recentChainPayout > 1000) {
+        patternAdvice = `✅ BB4連以上・総獲得${recentChainPayout}枚超え → 差枚+${finalDiff}枚（+1250以上）。ごん氏：有利切断狙いで続行可。`;
+        patternBg = 'rgba(46,204,113,.15)';
+      } else {
+        patternAdvice = `⚠️ BB4連以上・総獲得${recentChainPayout}枚（1000枚未満）→ 様子見続行可。`;
+        patternBg = 'rgba(243,156,18,.15)';
+      }
+    } else if (recentBBCount >= 2 && recentBBCount <= 3) {
+      patternType = 'bb2_3';
+      patternAdvice = `⚠️ BB${recentBBCount}連終了 → ごん氏：15チャンス目まで続行。ノーヒットなら辞め。`;
+      patternBg = 'rgba(243,156,18,.15)';
+    } else if (recentBBCount === 1 && recentChainEntries.length === 1) {
+      patternType = 'bb_single';
+      if (finalDiff >= 1250) {
+        patternAdvice = `✅ BB単発 + 差枚+${finalDiff}枚（切断圏）→ ごん氏：有利切断狙いなら続行可。`;
+        patternBg = 'rgba(46,204,113,.15)';
+      } else if (currentGVal >= 130) {
+        patternAdvice = '🚫 BB単発引き戻しなし + 130G超え → やめ推奨。';
+        patternBg = 'rgba(231,76,60,.15)'; patternForceStop = true;
+      } else {
+        patternAdvice = '⚠️ BB単発引き戻しなし → 基本130Gゾーン確認やめ。'
+          + (hasChanceCount && chanceCount <= 9 && timeZone !== 'evening'
+              ? ' チャ目9以下・昼ステージ → 100辞めも視野。' : '')
+          + ' 差枚+1250以上なら切断狙いで続行も。';
+        patternBg = 'rgba(243,156,18,.15)';
+      }
+    }
+
+    // ─── 狙い目チェック（ごん氏立ち回り優先度①②）───
+    let spotNote = '', spotBg = '';
+    if (currentDiff <= -2500) {
+      const condA = totalG >= 1600 && oneGCount === 0;
+      const condB = extraCount === 0 && redSevenFirstCount === 0;
+      if (condA && condB) {
+        spotNote = `⭐ 狙い目①全条件クリア！差枚${currentDiff}枚（-3000付近）＋${totalG}G以上＋1G連なし＋完走・赤7なし → ごん氏特定条件の狙い目。`;
+        spotBg = 'rgba(155,89,182,.25)';
+      } else if (condA) {
+        spotNote = `狙い目①候補：差枚${currentDiff}枚 + ${totalG}G以上 + 1G連なし。条件B（朝一から完走・赤7なし）も揃えば狙い目①完成。`;
+        spotBg = 'rgba(155,89,182,.12)';
+      }
+    }
+    if (currentDiff >= 1000 && currentDiff <= 1800) {
+      const s2 = `⭐ 狙い目②：差枚+${currentDiff}枚（+1,000〜1,800圏）→ 有利切断狙いゾーン。ごん氏立ち回り優先度②。`;
+      spotNote = spotNote ? spotNote + '<br>' + s2 : s2;
+      spotBg = spotBg || 'rgba(46,204,113,.15)';
+    }
+
     // 総合アクションスコア（履歴スコア + 現在地補正）
     let actionScore = score + marriagePenalty + cutBonus;
-    if (currentGVal <= 100) actionScore += 18; // 引き戻しゾーン内は続行ボーナス
+    if (currentGVal <= 100) actionScore += 18;
+    if (patternForceStop) actionScore = Math.min(actionScore, 20);
     actionScore = Math.max(0, Math.min(100, actionScore));
 
     let actionLabel, actionCls, actionBg;
-    if (currentGVal <= 100 && (marriageResult === 'red7_1' || marriageResult === 'rb')) {
-      // 引き戻しゾーン内でも冷遇サインあり → 慎重
+    if (patternForceStop) {
+      actionLabel = '🚫 即やめ推奨 → パターン確定シグナル';
+      actionCls = 'stop'; actionBg = 'rgba(231,76,60,.2)';
+    } else if (currentGVal <= 100 && (marriageResult === 'red7_1' || marriageResult === 'rb')) {
       actionLabel = '⚠️ 冷遇サイン確認 → 当たれば様子見、なければ早めに撤退';
       actionCls = 'caution'; actionBg = 'rgba(243,156,18,.15)';
     } else if (actionScore >= 65 || (currentGVal <= 100 && marriagePenalty >= 0)) {
@@ -1449,6 +1556,12 @@ function analyzeHistory() {
       actionLabel = '🚫 やめ推奨 → 冷遇・低設定の疑い大';
       actionCls = 'stop'; actionBg = 'rgba(231,76,60,.15)';
     }
+
+    const patternBox = patternType !== 'none' ? `
+      <div style="padding:9px 11px;background:${patternBg};border-radius:7px;font-size:12px;border-left:3px solid rgba(155,89,182,.6)">
+        <div style="font-weight:700;margin-bottom:3px;font-size:11px;color:var(--muted)">📋 直近連チャンパターン判定</div>
+        ${patternAdvice}
+      </div>` : '';
 
     actionContent.innerHTML = `
       <div style="display:grid;gap:8px">
@@ -1470,9 +1583,11 @@ function analyzeHistory() {
             ${realToCut>0?'+'+realToCut+'枚':'🎉 切断条件達成！'}
           </span>
         </div>
+        ${patternBox}
         <div style="padding:7px 10px;background:rgba(255,255,255,.04);border-radius:6px;font-size:11px;color:var(--muted)">${zoneAdvice}</div>
         ${marriageNote?`<div style="padding:7px 10px;background:rgba(255,255,255,.05);border-radius:6px;font-size:11px">${marriageNote}</div>`:''}
         ${cutNote?`<div style="padding:8px 10px;background:rgba(46,204,113,.1);border-radius:6px;font-size:12px;color:var(--green);font-weight:700">${cutNote}</div>`:''}
+        ${spotNote?`<div style="padding:9px 11px;background:${spotBg};border-radius:7px;font-size:12px;font-weight:600;border-left:3px solid rgba(46,204,113,.6)">${spotNote}</div>`:''}
         <div style="margin-top:4px;padding:13px;background:${actionBg};border-radius:8px;text-align:center;font-size:17px;font-weight:800;color:var(--text)">
           ${actionLabel}
         </div>
