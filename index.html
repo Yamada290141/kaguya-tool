@@ -536,6 +536,31 @@
           <option value="evening">夕方以降</option>
         </select>
       </div>
+      <div>
+        <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">CZの成績（任意）</label>
+        <select id="hreki_cz_performance" style="width:100%;padding:10px 12px;background:var(--input-bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px">
+          <option value="unknown">不明</option>
+          <option value="ok">1発成功・1回失敗程度（優遇示唆）</option>
+          <option value="fail2">2回連続失敗（冷遇気味）</option>
+          <option value="fail3plus">3回以上連続失敗（冷遇確定示唆）</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">CZ1G目アイキャッチ（任意）</label>
+        <select id="hreki_cz_aike" style="width:100%;padding:10px 12px;background:var(--input-bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px">
+          <option value="unknown">不明</option>
+          <option value="ok">青・赤など（問題なし）</option>
+          <option value="white">白が出た（冷遇強示唆）</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">グラフ挙動（任意）</label>
+        <select id="hreki_graph_pattern" style="width:100%;padding:10px 12px;background:var(--input-bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px">
+          <option value="unknown">不明</option>
+          <option value="kami_mimizu">上空ミミズ（揉みながら微増耐え）（優遇示唆）</option>
+          <option value="slump">スランプ（下落一辺倒）（冷遇気味）</option>
+        </select>
+      </div>
     </div>
   </div>
 
@@ -545,6 +570,10 @@
     <div class="card" id="hreki_action_card" style="margin-top:12px;border:1px solid rgba(155,89,182,.5);display:none">
       <div class="card-title">🎮 総合行動判断</div>
       <div id="hreki_action_content"></div>
+    </div>
+    <div class="card" style="margin-top:12px;border:1px solid rgba(231,76,60,.25)">
+      <div class="card-title">🔍 冷遇/優遇シグナルチェック</div>
+      <div id="hreki_signal_content"><span style="font-size:12px;color:var(--muted)">解析後に表示されます</span></div>
     </div>
     <div class="card" style="margin-top:12px">
       <div class="card-title">📊 区間分析テーブル</div>
@@ -1383,6 +1412,80 @@ function analyzeHistory() {
   const lastIsHikimodoshiBB = lastAn.btype === 'big' && !lastAn.isFirst && lastAn.gv <= 100;
   const isRBthenHikiBB     = !!(prevAn && prevAn.btype === 'reg' && lastIsHikimodoshiBB);
 
+  // ─── 冷遇/優遇シグナル計算（ごん氏: 絶対避けるべき状況・優遇の兆候）───
+  const czPerf        = document.getElementById('hreki_cz_performance').value;
+  const czAike        = document.getElementById('hreki_cz_aike').value;
+  const graphPattern  = document.getElementById('hreki_graph_pattern').value;
+  const _marriage     = document.getElementById('hreki_marriage_result').value;
+
+  // BB単発→RB→BB単発の繰り返しパターン検出
+  const directHits    = analyzed.filter(a => a.isFirst || a.gv > 132);
+  const directRBCount = directHits.filter(a => a.btype === 'reg').length;
+  const hasAltBBRB    = directRBCount >= 2 && directHits.length >= 4 && (() => {
+    let tr = 0;
+    for (let i = 1; i < directHits.length; i++) {
+      if (directHits[i].btype !== directHits[i - 1].btype) tr++;
+    }
+    return tr >= 2;
+  })();
+
+  const coldSignals = [];
+  const hotSignals  = [];
+
+  // ── 冷遇シグナル ──
+  if (czPerf === 'fail3plus')   coldSignals.push({ text: 'CZ 3回以上連続失敗（冷遇確定示唆）', w: 15, src: 'input' });
+  else if (czPerf === 'fail2')  coldSignals.push({ text: 'CZ 2回連続失敗（冷遇気味）', w: 8, src: 'input' });
+  if (czAike === 'white')       coldSignals.push({ text: 'CZ1G目アイキャッチが白（冷遇強示唆）', w: 18, src: 'input' });
+  if (_marriage === 'red7_1')   coldSignals.push({ text: 'マリアージュ後に赤7単発（冷遇代表的サイン）', w: 15, src: 'input' });
+  if (lastIsRB)                 coldSignals.push({ text: '直前ボーナスがRB（ごん氏マイルール⑧：×）', w: 12, src: 'auto' });
+  if (oneGCount === 0 && rows.length >= 4)
+                                coldSignals.push({ text: '1G連が全く発生しない（'+rows.length+'ボーナス確認）', w: 12, src: 'auto' });
+  else if (maxChainNum <= 2 && oneGCount > 0 && rows.length >= 6)
+                                coldSignals.push({ text: '最大2連止まり（深い連チャンなし）', w: 8, src: 'auto' });
+  if (hasAltBBRB)              coldSignals.push({ text: 'BB単発→RB→BB単発の繰り返しパターン', w: 12, src: 'auto' });
+  if (graphPattern === 'slump') coldSignals.push({ text: 'グラフがスランプ（下落一辺倒）', w: 8, src: 'input' });
+
+  // ── 優遇シグナル ──
+  if (czPerf === 'ok')          hotSignals.push({ text: 'CZ 1発成功・1回失敗程度', w: 10, src: 'input' });
+  if (maxChainNum >= 4 || oneGCount >= 4)
+                                hotSignals.push({ text: '1G連4連以上発生（高優遇示唆）', w: 12, src: 'auto' });
+  if (redSevenFirstCount >= 1)  hotSignals.push({ text: 'BB比率高い（赤7BB確認）', w: 8, src: 'auto' });
+  if (maxChainNum >= 2)         hotSignals.push({ text: '引き戻しから連チャンに発展', w: 8, src: 'auto' });
+  if (extraCount >= 1)          hotSignals.push({ text: 'エクストラBBあり（強い優遇示唆）', w: 12, src: 'auto' });
+  if (graphPattern === 'kami_mimizu')
+                                hotSignals.push({ text: '上空ミミズ挙動（揉みながら耐えている）', w: 10, src: 'input' });
+
+  // シグナルカード更新
+  const sigEl = document.getElementById('hreki_signal_content');
+  if (sigEl) {
+    const mkRow = (s, isCold) => {
+      const col = isCold ? 'var(--accent2)' : 'var(--green)';
+      const bg  = isCold ? 'rgba(231,76,60,.1)' : 'rgba(46,204,113,.1)';
+      const ico = isCold ? '⚠' : '✓';
+      const tag = s.src === 'auto'
+        ? `<span style="font-size:9px;color:var(--muted);margin-left:auto;white-space:nowrap">履歴自動判定</span>`
+        : `<span style="font-size:9px;color:var(--muted);margin-left:auto;white-space:nowrap">入力値</span>`;
+      return `<div style="display:flex;align-items:center;gap:6px;padding:5px 8px;background:${bg};border-radius:5px;margin-bottom:3px;font-size:12px">
+        <span style="color:${col};font-weight:700;flex-shrink:0">${ico}</span>
+        <span style="flex:1">${s.text}</span>${tag}</div>`;
+    };
+    const coldHtml = coldSignals.length
+      ? coldSignals.map(s => mkRow(s, true)).join('')
+      : '<div style="font-size:12px;color:var(--muted);padding:4px 0">なし</div>';
+    const hotHtml = hotSignals.length
+      ? hotSignals.map(s => mkRow(s, false)).join('')
+      : '<div style="font-size:12px;color:var(--muted);padding:4px 0">なし</div>';
+    sigEl.innerHTML = `
+      <div style="margin-bottom:10px">
+        <div style="font-size:11px;font-weight:700;color:var(--accent2);margin-bottom:5px">🚨 冷遇シグナル（${coldSignals.length}個該当）</div>
+        ${coldHtml}
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--green);margin-bottom:5px">✨ 優遇シグナル（${hotSignals.length}個該当）</div>
+        ${hotHtml}
+      </div>`;
+  }
+
   // ─── 総合行動判断 ───
   // 現在G数が入力されていれば現在地判定・リアルタイム差枚・続行/やめを総合判断
   const currentGVal  = parseInt(document.getElementById('hreki_current_g').value);
@@ -1533,9 +1636,11 @@ function analyzeHistory() {
       spotBg = spotBg || 'rgba(46,204,113,.15)';
     }
 
-    // 総合アクションスコア（履歴スコア + 現在地補正）
+    // 総合アクションスコア（履歴スコア + 現在地補正 + シグナル補正）
     let actionScore = score + marriagePenalty + cutBonus;
     if (currentGVal <= 100) actionScore += 18;
+    coldSignals.forEach(s => { actionScore -= s.w; });
+    hotSignals.forEach(s => { actionScore += s.w; });
     if (patternForceStop) actionScore = Math.min(actionScore, 20);
     actionScore = Math.max(0, Math.min(100, actionScore));
 
