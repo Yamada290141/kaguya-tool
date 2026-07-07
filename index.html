@@ -669,17 +669,12 @@
     </div>
     <button class="btn" style="margin-top:10px" onclick="adminLoadUsers()">🔄 ユーザーリストを更新</button>
   </div>
-  <div class="card">
-    <div class="card-title">🎫 招待コード発行</div>
-    <div style="display:grid;gap:8px">
-      <div style="display:grid;grid-template-columns:1fr auto;gap:8px">
-        <input type="text" id="admin-invite-note" placeholder="メモ（誰のコードか等）" style="padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;width:100%">
-        <button onclick="adminGenCode()" style="padding:10px 16px;background:rgba(46,204,113,.2);border:1px solid rgba(46,204,113,.4);border-radius:8px;color:var(--text);cursor:pointer;font-weight:700">発行</button>
-      </div>
-      <div id="admin-code-list" style="max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
-        <span style="color:var(--muted);font-size:12px">発行済みコードがここに表示されます</span>
-      </div>
-      <button onclick="adminLoadCodes()" style="padding:8px;background:var(--card2);border:1px solid var(--border);border-radius:8px;color:var(--muted);cursor:pointer;font-size:12px">🔄 更新</button>
+  <div class="card" style="border:1px solid rgba(100,149,237,.2)">
+    <div class="card-title">ℹ️ ユーザー追加方法</div>
+    <div style="font-size:12px;color:var(--muted);line-height:1.8">
+      Firebase Console → Authentication → ユーザーを追加<br>
+      メールアドレスとパスワードを設定して発行。<br>
+      発行後、相手にID（メールアドレス）とパスワードを共有してください。
     </div>
   </div>
 </div>
@@ -1928,7 +1923,7 @@ function updateAuthBar() {
     fbDb.collection('userRoles').doc(currentUser.uid).get().then(doc => {
       const isAdmin = doc.exists && doc.data().isAdmin;
       adminTab.style.display = isAdmin ? '' : 'none';
-      if (isAdmin) { adminLoadUsers(); adminLoadCodes(); }
+      if (isAdmin) { adminLoadUsers(); }
     });
     loadSaveList();
   } else {
@@ -1941,21 +1936,11 @@ function updateAuthBar() {
 }
 
 function openAuthModal() {
-  showLoginForm();
   document.getElementById('auth-modal').classList.add('open');
 }
 function closeModal() {
   document.getElementById('auth-modal').classList.remove('open');
   document.getElementById('login-err').textContent = '';
-  document.getElementById('reg-err').textContent = '';
-}
-function showRegisterForm() {
-  document.getElementById('modal-login-form').style.display = 'none';
-  document.getElementById('modal-register-form').style.display = '';
-}
-function showLoginForm() {
-  document.getElementById('modal-login-form').style.display = '';
-  document.getElementById('modal-register-form').style.display = 'none';
 }
 
 async function fbLogin() {
@@ -1969,33 +1954,6 @@ async function fbLogin() {
     closeModal();
   } catch(e) {
     errEl.textContent = 'ログイン失敗: メールまたはパスワードが正しくありません';
-  }
-}
-
-async function fbRegister() {
-  const code = document.getElementById('reg-invite-code').value.trim();
-  const email = document.getElementById('reg-email').value.trim();
-  const password = document.getElementById('reg-password').value;
-  const errEl = document.getElementById('reg-err');
-  errEl.textContent = '';
-  if (!code || !email || !password) { errEl.textContent = '全ての項目を入力してください'; return; }
-  if (password.length < 6) { errEl.textContent = 'パスワードは6文字以上で入力してください'; return; }
-  try {
-    const codeDoc = await fbDb.collection('inviteCodes').doc(code).get();
-    if (!codeDoc.exists || codeDoc.data().used) {
-      errEl.textContent = '招待コードが無効または使用済みです'; return;
-    }
-    const cred = await fbAuth.createUserWithEmailAndPassword(email, password);
-    const uid = cred.user.uid;
-    await fbDb.collection('inviteCodes').doc(code).update({ used: true, usedBy: uid, usedAt: firebase.firestore.FieldValue.serverTimestamp() });
-    await fbDb.collection('userRoles').doc(uid).set({ email, isAdmin: false, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
-    closeModal();
-  } catch(e) {
-    if (e.code === 'auth/email-already-in-use') {
-      errEl.textContent = 'このメールアドレスはすでに使用されています';
-    } else {
-      errEl.textContent = '登録失敗: ' + (e.message || e.code);
-    }
   }
 }
 
@@ -2144,93 +2102,20 @@ async function adminViewUserSaves(uid, email) {
   } catch(e) { alert('取得失敗: ' + e.message); }
 }
 
-async function adminGenCode() {
-  const note = document.getElementById('admin-invite-note').value.trim();
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let code = '';
-  for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)];
-  try {
-    await fbDb.collection('inviteCodes').doc(code).set({
-      note: note || '',
-      used: false,
-      createdBy: currentUser.uid,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-    document.getElementById('admin-invite-note').value = '';
-    alert(`招待コードを発行しました:\n${code}`);
-    adminLoadCodes();
-  } catch(e) { alert('発行失敗: ' + e.message); }
-}
-
-async function adminLoadCodes() {
-  const container = document.getElementById('admin-code-list');
-  if (!container) return;
-  try {
-    const snap = await fbDb.collection('inviteCodes').orderBy('createdAt', 'desc').limit(20).get();
-    if (snap.empty) { container.innerHTML = '<span style="color:var(--muted);font-size:12px">コードなし</span>'; return; }
-    let html = '';
-    snap.forEach(doc => {
-      const d = doc.data();
-      const status = d.used ? '<span style="color:var(--muted)">使用済</span>' : '<span style="color:var(--green)">未使用</span>';
-      html += `<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px;display:flex;justify-content:space-between;align-items:center">
-        <div>
-          <code style="font-size:14px;font-weight:700;letter-spacing:1px">${doc.id}</code>
-          ${d.note ? `<span style="font-size:11px;color:var(--muted);margin-left:6px">${d.note}</span>` : ''}
-        </div>
-        ${status}
-      </div>`;
-    });
-    container.innerHTML = html;
-  } catch(e) { container.innerHTML = '<span style="color:var(--accent);font-size:12px">読み込みエラー</span>'; }
-}
-
 initFirebase();
 </script>
 
 <div class="modal-overlay" id="auth-modal">
   <div class="modal-box">
     <button class="modal-close" onclick="closeModal()">×</button>
-    <div id="modal-login-form">
-      <div style="font-size:17px;font-weight:800;margin-bottom:16px">🔐 ログイン</div>
-      <div style="display:grid;gap:10px">
-        <div>
-          <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">メールアドレス</label>
-          <input type="email" id="login-email" class="modal-inp" placeholder="email@example.com">
-        </div>
-        <div>
-          <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">パスワード</label>
-          <input type="password" id="login-password" class="modal-inp" placeholder="••••••••">
-        </div>
-        <div id="login-err" class="modal-err"></div>
-        <button class="btn" onclick="fbLogin()">ログイン</button>
-        <div style="text-align:center;font-size:12px;color:var(--muted)">
-          招待コードをお持ちの場合は
-          <span style="color:var(--accent2);cursor:pointer" onclick="showRegisterForm()">こちらから登録</span>
-        </div>
-      </div>
-    </div>
-    <div id="modal-register-form" style="display:none">
-      <div style="font-size:17px;font-weight:800;margin-bottom:16px">📝 新規登録</div>
-      <div style="display:grid;gap:10px">
-        <div>
-          <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">招待コード</label>
-          <input type="text" id="reg-invite-code" class="modal-inp" placeholder="管理者から受け取ったコード">
-        </div>
-        <div>
-          <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">メールアドレス</label>
-          <input type="email" id="reg-email" class="modal-inp" placeholder="email@example.com">
-        </div>
-        <div>
-          <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">パスワード（6文字以上）</label>
-          <input type="password" id="reg-password" class="modal-inp" placeholder="••••••••">
-        </div>
-        <div id="reg-err" class="modal-err"></div>
-        <button class="btn" onclick="fbRegister()">登録する</button>
-        <div style="text-align:center;font-size:12px;color:var(--muted)">
-          すでにアカウントをお持ちの場合は
-          <span style="color:var(--accent2);cursor:pointer" onclick="showLoginForm()">こちらからログイン</span>
-        </div>
-      </div>
+    <div style="font-size:17px;font-weight:800;margin-bottom:4px">🔐 ログイン</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:18px">IDとパスワードを入力</div>
+    <div style="display:grid;gap:12px">
+      <input type="email" id="login-email" class="modal-inp" placeholder="ログインID（メールアドレス）" autocapitalize="none" autocorrect="off" spellcheck="false">
+      <input type="password" id="login-password" class="modal-inp" placeholder="パスワード">
+      <div id="login-err" class="modal-err"></div>
+      <button class="btn" onclick="fbLogin()">ログイン</button>
+      <div style="text-align:center;font-size:11px;color:var(--muted)">アカウントは管理者が発行します</div>
     </div>
   </div>
 </div>
