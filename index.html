@@ -146,7 +146,20 @@
   .stat-cell { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px; text-align: center; }
   .stat-cell .sv { font-size: 26px; font-weight: 800; line-height: 1; }
   .stat-cell .sl { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  /* Auth */
+  #auth-bar { display:flex; align-items:center; justify-content:flex-end; padding:6px 16px; background:rgba(255,255,255,.03); border-bottom:1px solid var(--border); font-size:12px; gap:8px; }
+  .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.75); z-index:2000; justify-content:center; align-items:center; }
+  .modal-overlay.open { display:flex; }
+  .modal-box { background:var(--card); border-radius:14px; padding:28px 24px; width:min(92vw,380px); position:relative; border:1px solid var(--border); }
+  .modal-close { position:absolute; top:12px; right:14px; background:none; border:none; color:var(--muted); cursor:pointer; font-size:20px; line-height:1; }
+  .modal-inp { width:100%; padding:11px 12px; background:var(--input-bg); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:14px; box-sizing:border-box; }
+  .modal-err { color:var(--accent2); font-size:12px; min-height:16px; }
+  .tab-admin { display:none; }
+  #save-section { display:none; }
 </style>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 </head>
 <body>
 
@@ -157,6 +170,11 @@
   </div>
 </header>
 
+<div id="auth-bar">
+  <span id="auth-user-label" style="color:var(--muted)"></span>
+  <button id="auth-login-btn" class="btn" style="padding:4px 14px;font-size:12px" onclick="openAuthModal()">🔐 ログイン</button>
+  <button id="auth-logout-btn" class="btn" style="padding:4px 14px;font-size:12px;display:none" onclick="fbSignOut()">ログアウト</button>
+</div>
 <div class="tabs">
   <div class="tab active" onclick="switchTab(0)">台選び判定</div>
   <div class="tab" onclick="switchTab(1)">やめ時判定</div>
@@ -164,6 +182,7 @@
   <div class="tab" onclick="switchTab(3)">設定チェック</div>
   <div class="tab" onclick="switchTab(4)">狙い目ガイド</div>
   <div class="tab" onclick="switchTab(5)">履歴読み</div>
+  <div class="tab tab-admin" id="tab-admin-btn" onclick="switchTab(6)">⚙ 管理</div>
 </div>
 
 <!-- ========== TAB 0: 台選び判定 ========== -->
@@ -564,6 +583,24 @@
     </div>
   </div>
 
+  <div id="save-section" class="card" style="margin-top:12px;border:1px solid rgba(100,149,237,.35)">
+    <div class="card-title">💾 保存 / 読み込み</div>
+    <div style="display:grid;gap:10px">
+      <div>
+        <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">台情報メモ（店名・台番号など）</label>
+        <input type="text" id="hreki_machine_name" placeholder="例: A店 3番台、2025-01-15" style="width:100%;padding:10px 12px;background:var(--input-bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;box-sizing:border-box">
+      </div>
+      <button class="btn" onclick="fbSave()">💾 現在の内容を保存</button>
+      <div style="display:grid;grid-template-columns:1fr auto auto;gap:6px;align-items:center">
+        <select id="hreki_save_select" style="padding:9px 10px;background:var(--input-bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px">
+          <option value="">── 保存済みを選択 ──</option>
+        </select>
+        <button onclick="fbLoad()" style="padding:9px 14px;background:rgba(100,149,237,.2);border:1px solid rgba(100,149,237,.4);border-radius:8px;color:var(--text);cursor:pointer;font-size:13px">📂</button>
+        <button onclick="fbDeleteSave()" style="padding:9px 14px;background:rgba(231,76,60,.2);border:1px solid rgba(231,76,60,.4);border-radius:8px;color:var(--text);cursor:pointer;font-size:13px">🗑</button>
+      </div>
+    </div>
+  </div>
+
   <button class="btn" onclick="analyzeHistory()">🔍 履歴を解析する</button>
 
   <div id="hreki_result" style="display:none">
@@ -619,6 +656,30 @@
     <div id="hreki_verdict_box" class="result-box show" style="margin-top:12px">
       <div id="hreki_verdict" class="verdict"></div>
       <ul id="hreki_verdict_list" class="reason-list" style="margin-top:10px"></ul>
+    </div>
+  </div>
+</div>
+
+<!-- ========== TAB 6: 管理 (Admin) ========== -->
+<div id="page6" class="page">
+  <div class="card">
+    <div class="card-title">👥 ユーザー管理</div>
+    <div id="admin-user-list">
+      <span style="color:var(--muted);font-size:12px">管理者ログイン後に表示されます</span>
+    </div>
+    <button class="btn" style="margin-top:10px" onclick="adminLoadUsers()">🔄 ユーザーリストを更新</button>
+  </div>
+  <div class="card">
+    <div class="card-title">🎫 招待コード発行</div>
+    <div style="display:grid;gap:8px">
+      <div style="display:grid;grid-template-columns:1fr auto;gap:8px">
+        <input type="text" id="admin-invite-note" placeholder="メモ（誰のコードか等）" style="padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;width:100%">
+        <button onclick="adminGenCode()" style="padding:10px 16px;background:rgba(46,204,113,.2);border:1px solid rgba(46,204,113,.4);border-radius:8px;color:var(--text);cursor:pointer;font-weight:700">発行</button>
+      </div>
+      <div id="admin-code-list" style="max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
+        <span style="color:var(--muted);font-size:12px">発行済みコードがここに表示されます</span>
+      </div>
+      <button onclick="adminLoadCodes()" style="padding:8px;background:var(--card2);border:1px solid var(--border);border-radius:8px;color:var(--muted);cursor:pointer;font-size:12px">🔄 更新</button>
     </div>
   </div>
 </div>
@@ -1826,6 +1887,352 @@ buildChecklist();
 calcRieki();
 addHistItem();
 addHrekiRow(); addHrekiRow(); addHrekiRow();
+
+// ============ Firebase ============
+const FIREBASE_CONFIG = {
+  apiKey: "REPLACE_ME_API_KEY",
+  authDomain: "REPLACE_ME_AUTH_DOMAIN",
+  projectId: "REPLACE_ME_PROJECT_ID",
+  storageBucket: "REPLACE_ME_STORAGE_BUCKET",
+  messagingSenderId: "REPLACE_ME_MESSAGING_SENDER_ID",
+  appId: "REPLACE_ME_APP_ID"
+};
+
+let fbAuth, fbDb, currentUser = null;
+
+function initFirebase() {
+  try {
+    firebase.initializeApp(FIREBASE_CONFIG);
+    fbAuth = firebase.auth();
+    fbDb = firebase.firestore();
+    fbAuth.onAuthStateChanged(user => {
+      currentUser = user;
+      updateAuthBar();
+    });
+  } catch(e) {
+    console.error('Firebase init failed:', e);
+  }
+}
+
+function updateAuthBar() {
+  const label = document.getElementById('auth-user-label');
+  const loginBtn = document.getElementById('auth-login-btn');
+  const logoutBtn = document.getElementById('auth-logout-btn');
+  const saveSection = document.getElementById('save-section');
+  const adminTab = document.getElementById('tab-admin-btn');
+  if (currentUser) {
+    label.textContent = currentUser.email;
+    loginBtn.style.display = 'none';
+    logoutBtn.style.display = '';
+    saveSection.style.display = '';
+    fbDb.collection('userRoles').doc(currentUser.uid).get().then(doc => {
+      const isAdmin = doc.exists && doc.data().isAdmin;
+      adminTab.style.display = isAdmin ? '' : 'none';
+      if (isAdmin) { adminLoadUsers(); adminLoadCodes(); }
+    });
+    loadSaveList();
+  } else {
+    label.textContent = '';
+    loginBtn.style.display = '';
+    logoutBtn.style.display = 'none';
+    saveSection.style.display = 'none';
+    adminTab.style.display = 'none';
+  }
+}
+
+function openAuthModal() {
+  showLoginForm();
+  document.getElementById('auth-modal').classList.add('open');
+}
+function closeModal() {
+  document.getElementById('auth-modal').classList.remove('open');
+  document.getElementById('login-err').textContent = '';
+  document.getElementById('reg-err').textContent = '';
+}
+function showRegisterForm() {
+  document.getElementById('modal-login-form').style.display = 'none';
+  document.getElementById('modal-register-form').style.display = '';
+}
+function showLoginForm() {
+  document.getElementById('modal-login-form').style.display = '';
+  document.getElementById('modal-register-form').style.display = 'none';
+}
+
+async function fbLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errEl = document.getElementById('login-err');
+  errEl.textContent = '';
+  if (!email || !password) { errEl.textContent = 'メールとパスワードを入力してください'; return; }
+  try {
+    await fbAuth.signInWithEmailAndPassword(email, password);
+    closeModal();
+  } catch(e) {
+    errEl.textContent = 'ログイン失敗: メールまたはパスワードが正しくありません';
+  }
+}
+
+async function fbRegister() {
+  const code = document.getElementById('reg-invite-code').value.trim();
+  const email = document.getElementById('reg-email').value.trim();
+  const password = document.getElementById('reg-password').value;
+  const errEl = document.getElementById('reg-err');
+  errEl.textContent = '';
+  if (!code || !email || !password) { errEl.textContent = '全ての項目を入力してください'; return; }
+  if (password.length < 6) { errEl.textContent = 'パスワードは6文字以上で入力してください'; return; }
+  try {
+    const codeDoc = await fbDb.collection('inviteCodes').doc(code).get();
+    if (!codeDoc.exists || codeDoc.data().used) {
+      errEl.textContent = '招待コードが無効または使用済みです'; return;
+    }
+    const cred = await fbAuth.createUserWithEmailAndPassword(email, password);
+    const uid = cred.user.uid;
+    await fbDb.collection('inviteCodes').doc(code).update({ used: true, usedBy: uid, usedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    await fbDb.collection('userRoles').doc(uid).set({ email, isAdmin: false, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+    closeModal();
+  } catch(e) {
+    if (e.code === 'auth/email-already-in-use') {
+      errEl.textContent = 'このメールアドレスはすでに使用されています';
+    } else {
+      errEl.textContent = '登録失敗: ' + (e.message || e.code);
+    }
+  }
+}
+
+function fbSignOut() { fbAuth.signOut(); }
+
+// ---- Save / Load ----
+async function fbSave() {
+  if (!currentUser) { alert('先にログインしてください'); return; }
+  const machineName = document.getElementById('hreki_machine_name').value.trim();
+  if (!machineName) { alert('台情報メモを入力してください（店名・台番号など）'); return; }
+  const rows = [];
+  document.querySelectorAll('.hreki-input-row').forEach(row => {
+    const sel = row.querySelector('select');
+    const inp = row.querySelector('input[type=number]');
+    if (sel && inp) rows.push({ btype: sel.value, g: inp.value });
+  });
+  const situation = {
+    current_g: document.getElementById('hreki_current_g').value,
+    current_cz: document.getElementById('hreki_current_cz').value,
+    marriage_result: document.getElementById('hreki_marriage_result').value,
+    chance_count: document.getElementById('hreki_chance_count').value,
+    time_zone: document.getElementById('hreki_time_zone').value,
+    cz_performance: document.getElementById('hreki_cz_performance').value,
+    cz_aike: document.getElementById('hreki_cz_aike').value,
+    graph_pattern: document.getElementById('hreki_graph_pattern').value,
+  };
+  try {
+    await fbDb.collection('users').doc(currentUser.uid).collection('saves').add({
+      machineName, rows, situation,
+      savedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    alert('保存しました: ' + machineName);
+    loadSaveList();
+  } catch(e) { alert('保存失敗: ' + e.message); }
+}
+
+async function loadSaveList() {
+  if (!currentUser) return;
+  const sel = document.getElementById('hreki_save_select');
+  try {
+    const snap = await fbDb.collection('users').doc(currentUser.uid).collection('saves')
+      .orderBy('savedAt', 'desc').limit(30).get();
+    sel.innerHTML = '<option value="">── 保存済みを選択 ──</option>';
+    snap.forEach(doc => {
+      const d = doc.data();
+      const opt = document.createElement('option');
+      opt.value = doc.id;
+      const ts = d.savedAt ? new Date(d.savedAt.toMillis()).toLocaleDateString('ja-JP') : '日付不明';
+      opt.textContent = `${d.machineName} (${ts})`;
+      sel.appendChild(opt);
+    });
+  } catch(e) { console.error('loadSaveList:', e); }
+}
+
+async function fbLoad() {
+  if (!currentUser) { alert('先にログインしてください'); return; }
+  const sel = document.getElementById('hreki_save_select');
+  const saveId = sel.value;
+  if (!saveId) { alert('読み込むデータを選択してください'); return; }
+  try {
+    const doc = await fbDb.collection('users').doc(currentUser.uid).collection('saves').doc(saveId).get();
+    if (!doc.exists) { alert('データが見つかりません'); return; }
+    const d = doc.data();
+    document.getElementById('hreki_machine_name').value = d.machineName || '';
+    const list = document.getElementById('hreki_list');
+    list.innerHTML = '';
+    (d.rows || []).forEach(() => addHrekiRow());
+    const newRows = list.querySelectorAll('.hreki-input-row');
+    (d.rows || []).forEach((r, i) => {
+      if (newRows[i]) {
+        const s2 = newRows[i].querySelector('select');
+        const inp = newRows[i].querySelector('input[type=number]');
+        if (s2) s2.value = r.btype;
+        if (inp) inp.value = r.g;
+      }
+    });
+    const sit = d.situation || {};
+    ['current_g','current_cz','marriage_result','chance_count','time_zone','cz_performance','cz_aike','graph_pattern'].forEach(k => {
+      const el = document.getElementById('hreki_' + k);
+      if (el && sit[k] !== undefined) el.value = sit[k];
+    });
+    alert('読み込みました: ' + d.machineName);
+  } catch(e) { alert('読み込み失敗: ' + e.message); }
+}
+
+async function fbDeleteSave() {
+  if (!currentUser) { alert('先にログインしてください'); return; }
+  const sel = document.getElementById('hreki_save_select');
+  const saveId = sel.value;
+  if (!saveId) { alert('削除するデータを選択してください'); return; }
+  const name = sel.options[sel.selectedIndex].textContent;
+  if (!confirm(`削除しますか？\n${name}`)) return;
+  try {
+    await fbDb.collection('users').doc(currentUser.uid).collection('saves').doc(saveId).delete();
+    alert('削除しました');
+    loadSaveList();
+  } catch(e) { alert('削除失敗: ' + e.message); }
+}
+
+// ---- Admin ----
+async function adminLoadUsers() {
+  const container = document.getElementById('admin-user-list');
+  if (!container) return;
+  try {
+    const snap = await fbDb.collection('userRoles').get();
+    if (snap.empty) { container.innerHTML = '<span style="color:var(--muted);font-size:12px">ユーザーなし</span>'; return; }
+    const promises = [];
+    snap.forEach(doc => {
+      const d = doc.data();
+      const uid = doc.id;
+      promises.push(
+        fbDb.collection('users').doc(uid).collection('saves').get().then(ss => ({
+          uid, email: d.email, isAdmin: d.isAdmin, saveCount: ss.size
+        }))
+      );
+    });
+    const users = await Promise.all(promises);
+    let html = '<div style="display:flex;flex-direction:column;gap:8px">';
+    users.forEach(u => {
+      html += `<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div>
+          <div style="font-size:13px;font-weight:700">${u.email}</div>
+          <div style="font-size:11px;color:var(--muted)">保存数: ${u.saveCount}件${u.isAdmin?' · 管理者':''}</div>
+        </div>
+        <button onclick="adminViewUserSaves('${u.uid}','${u.email}')" style="padding:6px 12px;background:rgba(100,149,237,.2);border:1px solid rgba(100,149,237,.4);border-radius:6px;color:var(--text);cursor:pointer;font-size:11px">閲覧</button>
+      </div>`;
+    });
+    html += '</div>';
+    container.innerHTML = html;
+  } catch(e) {
+    container.innerHTML = '<span style="color:var(--accent);font-size:12px">読み込みエラー: ' + e.message + '</span>';
+  }
+}
+
+async function adminViewUserSaves(uid, email) {
+  try {
+    const snap = await fbDb.collection('users').doc(uid).collection('saves').orderBy('savedAt', 'desc').get();
+    if (snap.empty) { alert(`${email} の保存データはありません`); return; }
+    let msg = `${email} の保存データ (${snap.size}件):\n\n`;
+    snap.forEach(doc => {
+      const d = doc.data();
+      const ts = d.savedAt ? new Date(d.savedAt.toMillis()).toLocaleDateString('ja-JP') : '日付不明';
+      msg += `・${d.machineName} (${ts})\n`;
+    });
+    alert(msg);
+  } catch(e) { alert('取得失敗: ' + e.message); }
+}
+
+async function adminGenCode() {
+  const note = document.getElementById('admin-invite-note').value.trim();
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  try {
+    await fbDb.collection('inviteCodes').doc(code).set({
+      note: note || '',
+      used: false,
+      createdBy: currentUser.uid,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    document.getElementById('admin-invite-note').value = '';
+    alert(`招待コードを発行しました:\n${code}`);
+    adminLoadCodes();
+  } catch(e) { alert('発行失敗: ' + e.message); }
+}
+
+async function adminLoadCodes() {
+  const container = document.getElementById('admin-code-list');
+  if (!container) return;
+  try {
+    const snap = await fbDb.collection('inviteCodes').orderBy('createdAt', 'desc').limit(20).get();
+    if (snap.empty) { container.innerHTML = '<span style="color:var(--muted);font-size:12px">コードなし</span>'; return; }
+    let html = '';
+    snap.forEach(doc => {
+      const d = doc.data();
+      const status = d.used ? '<span style="color:var(--muted)">使用済</span>' : '<span style="color:var(--green)">未使用</span>';
+      html += `<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px;display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <code style="font-size:14px;font-weight:700;letter-spacing:1px">${doc.id}</code>
+          ${d.note ? `<span style="font-size:11px;color:var(--muted);margin-left:6px">${d.note}</span>` : ''}
+        </div>
+        ${status}
+      </div>`;
+    });
+    container.innerHTML = html;
+  } catch(e) { container.innerHTML = '<span style="color:var(--accent);font-size:12px">読み込みエラー</span>'; }
+}
+
+initFirebase();
 </script>
+
+<div class="modal-overlay" id="auth-modal">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal()">×</button>
+    <div id="modal-login-form">
+      <div style="font-size:17px;font-weight:800;margin-bottom:16px">🔐 ログイン</div>
+      <div style="display:grid;gap:10px">
+        <div>
+          <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">メールアドレス</label>
+          <input type="email" id="login-email" class="modal-inp" placeholder="email@example.com">
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">パスワード</label>
+          <input type="password" id="login-password" class="modal-inp" placeholder="••••••••">
+        </div>
+        <div id="login-err" class="modal-err"></div>
+        <button class="btn" onclick="fbLogin()">ログイン</button>
+        <div style="text-align:center;font-size:12px;color:var(--muted)">
+          招待コードをお持ちの場合は
+          <span style="color:var(--accent2);cursor:pointer" onclick="showRegisterForm()">こちらから登録</span>
+        </div>
+      </div>
+    </div>
+    <div id="modal-register-form" style="display:none">
+      <div style="font-size:17px;font-weight:800;margin-bottom:16px">📝 新規登録</div>
+      <div style="display:grid;gap:10px">
+        <div>
+          <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">招待コード</label>
+          <input type="text" id="reg-invite-code" class="modal-inp" placeholder="管理者から受け取ったコード">
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">メールアドレス</label>
+          <input type="email" id="reg-email" class="modal-inp" placeholder="email@example.com">
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">パスワード（6文字以上）</label>
+          <input type="password" id="reg-password" class="modal-inp" placeholder="••••••••">
+        </div>
+        <div id="reg-err" class="modal-err"></div>
+        <button class="btn" onclick="fbRegister()">登録する</button>
+        <div style="text-align:center;font-size:12px;color:var(--muted)">
+          すでにアカウントをお持ちの場合は
+          <span style="color:var(--accent2);cursor:pointer" onclick="showLoginForm()">こちらからログイン</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 </body>
 </html>
